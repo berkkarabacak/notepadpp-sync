@@ -7,8 +7,8 @@
 #ifndef WIN32_LEAN_AND_MEAN
 #define WIN32_LEAN_AND_MEAN
 #endif
-#include <wincrypt.h>
 #include <windows.h>
+#include <wincrypt.h>
 
 #include <nlohmann/json.hpp>
 

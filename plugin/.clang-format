@@ -4,6 +4,9 @@ Language: Cpp
 Standard: c++17
 ColumnLimit: 110
 IndentWidth: 4
+# Include order is load-bearing on Windows (windows.h must precede
+# bcrypt.h / wincrypt.h / winhttp.h) — never reorder includes.
+SortIncludes: Never
 PointerAlignment: Left
 ReferenceAlignment: Left
 BreakBeforeBraces: Custom
