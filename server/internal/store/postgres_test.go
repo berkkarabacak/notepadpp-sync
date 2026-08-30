@@ -5,8 +5,12 @@ import (
 	"errors"
 	"fmt"
 	"os"
+	"sort"
+	"strings"
 	"testing"
 	"time"
+
+	"npsync/server/migrations"
 )
 
 // Postgres integration tests run only when NPSYNC_TEST_DATABASE_URL is set
@@ -26,8 +30,31 @@ func openTestPostgres(t *testing.T) *Postgres {
 		t.Fatalf("connect: %v", err)
 	}
 	t.Cleanup(func() { p.Close() })
-	// Clean slate per test: wipe tables used by the suite.
+
+	// Apply embedded migrations (the test DB is created empty by the service).
+	entries, err := migrations.FS.ReadDir(".")
+	if err != nil {
+		t.Fatalf("read migrations: %v", err)
+	}
+	names := make([]string, 0, len(entries))
+	for _, e := range entries {
+		if strings.HasSuffix(e.Name(), ".sql") {
+			names = append(names, e.Name())
+		}
+	}
+	sort.Strings(names)
 	ctx := context.Background()
+	for _, name := range names {
+		body, err := migrations.FS.ReadFile(name)
+		if err != nil {
+			t.Fatalf("read %s: %v", name, err)
+		}
+		if _, err := p.db.ExecContext(ctx, string(body)); err != nil {
+			t.Fatalf("migrate %s: %v", name, err)
+		}
+	}
+
+	// Clean slate per test: wipe tables used by the suite.
 	for _, table := range []string{"changes", "file_versions", "files",
 		"idempotency_keys", "pairing_codes", "sessions", "refresh_tokens",
 		"devices", "accounts"} {

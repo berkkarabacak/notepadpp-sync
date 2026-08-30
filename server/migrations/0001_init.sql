@@ -7,7 +7,7 @@ CREATE TABLE IF NOT EXISTS schema_migrations (
     applied_at  TIMESTAMPTZ NOT NULL DEFAULT now()
 );
 
-CREATE TABLE accounts (
+CREATE TABLE IF NOT EXISTS accounts (
     id                     UUID PRIMARY KEY,
     email                  TEXT NOT NULL UNIQUE,
     password_hash          TEXT NOT NULL,          -- argon2id encoded string
@@ -16,7 +16,7 @@ CREATE TABLE accounts (
     locked_until           TIMESTAMPTZ
 );
 
-CREATE TABLE devices (
+CREATE TABLE IF NOT EXISTS devices (
     id           UUID PRIMARY KEY,
     account_id   UUID NOT NULL REFERENCES accounts(id) ON DELETE CASCADE,
     name         TEXT NOT NULL,
@@ -26,7 +26,7 @@ CREATE TABLE devices (
 );
 CREATE INDEX devices_account_idx ON devices(account_id);
 
-CREATE TABLE refresh_tokens (
+CREATE TABLE IF NOT EXISTS refresh_tokens (
     id          UUID PRIMARY KEY,
     device_id   UUID NOT NULL REFERENCES devices(id) ON DELETE CASCADE,
     token_hash  TEXT NOT NULL UNIQUE,               -- SHA-256 of the opaque token
@@ -37,7 +37,7 @@ CREATE TABLE refresh_tokens (
 CREATE INDEX refresh_tokens_device_idx ON refresh_tokens(device_id);
 
 -- Current head state per file. Ciphertext only; the server cannot decrypt.
-CREATE TABLE files (
+CREATE TABLE IF NOT EXISTS files (
     account_id         UUID NOT NULL REFERENCES accounts(id) ON DELETE CASCADE,
     file_id            UUID NOT NULL,
     encrypted_metadata BYTEA NOT NULL,
@@ -55,7 +55,7 @@ CREATE TABLE files (
 CREATE INDEX files_change_seq_idx ON files(account_id, change_seq);
 
 -- Version history (retention-pruned by application logic).
-CREATE TABLE file_versions (
+CREATE TABLE IF NOT EXISTS file_versions (
     account_id         UUID NOT NULL,
     file_id            UUID NOT NULL,
     version            INT  NOT NULL,
@@ -72,7 +72,7 @@ CREATE TABLE file_versions (
 );
 
 -- Global, monotonic change feed for delta sync and WS fan-out.
-CREATE TABLE changes (
+CREATE TABLE IF NOT EXISTS changes (
     change_seq       BIGSERIAL PRIMARY KEY,
     account_id       UUID NOT NULL REFERENCES accounts(id) ON DELETE CASCADE,
     file_id          UUID NOT NULL,
@@ -84,7 +84,7 @@ CREATE TABLE changes (
 CREATE INDEX changes_account_idx ON changes(account_id, change_seq);
 
 -- Idempotency for mutating calls: same key -> stored response, no re-apply.
-CREATE TABLE idempotency_keys (
+CREATE TABLE IF NOT EXISTS idempotency_keys (
     account_id  UUID NOT NULL REFERENCES accounts(id) ON DELETE CASCADE,
     key         TEXT NOT NULL,
     response    JSONB NOT NULL,
@@ -93,7 +93,7 @@ CREATE TABLE idempotency_keys (
 );
 
 -- Device pairing codes (single-use, short-lived).
-CREATE TABLE pairing_codes (
+CREATE TABLE IF NOT EXISTS pairing_codes (
     code               TEXT PRIMARY KEY,
     account_id         UUID NOT NULL REFERENCES accounts(id) ON DELETE CASCADE,
     requesting_device  UUID NOT NULL,
@@ -105,7 +105,7 @@ CREATE TABLE pairing_codes (
 );
 
 -- Optional encrypted session state (open tabs, cursor, scroll).
-CREATE TABLE sessions (
+CREATE TABLE IF NOT EXISTS sessions (
     account_id       UUID PRIMARY KEY REFERENCES accounts(id) ON DELETE CASCADE,
     encrypted_state  BYTEA NOT NULL,
     version          INT NOT NULL,
