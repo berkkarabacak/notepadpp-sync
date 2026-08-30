@@ -15,7 +15,7 @@ param(
 $ErrorActionPreference = "Stop"
 
 $dll = Join-Path $BuildDir "NppSync.dll"
-if (-not (Test-Path $dll)) { throw "Plugin DLL not found at $dll — build first." }
+if (-not (Test-Path $dll)) { throw "Plugin DLL not found at $dll - build first." }
 
 New-Item -ItemType Directory -Force -Path $OutDir | Out-Null
 $staging = Join-Path $OutDir "staging"

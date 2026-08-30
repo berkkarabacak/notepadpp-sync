@@ -27,7 +27,7 @@ jobs:
       - name: Package ZIP + checksums
         shell: pwsh
         run: |
-          $v = "${GITHUB_REF_NAME}".TrimStart('v')
+          $v = "$env:GITHUB_REF_NAME".TrimStart('v')
           powershell -File installer/package.ps1 -Version $v
 
       - name: Upload release assets

@@ -1,4 +1,4 @@
-; NppSync.nsi — NSIS installer script for the Notepad++ Sync plugin.
+; NppSync.nsi - NSIS installer script for the Notepad++ Sync plugin.
 ; Optional packaging path; the ZIP from package.ps1 is the primary artifact.
 ; Build: makensis /DVERSION=1.0.0 NppSync.nsi
 
