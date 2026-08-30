@@ -24,7 +24,7 @@ CREATE TABLE IF NOT EXISTS devices (
     last_seen_at TIMESTAMPTZ NOT NULL DEFAULT now(),
     revoked_at   TIMESTAMPTZ
 );
-CREATE INDEX devices_account_idx ON devices(account_id);
+CREATE INDEX IF NOT EXISTS devices_account_idx ON devices(account_id);
 
 CREATE TABLE IF NOT EXISTS refresh_tokens (
     id          UUID PRIMARY KEY,
@@ -34,7 +34,7 @@ CREATE TABLE IF NOT EXISTS refresh_tokens (
     expires_at  TIMESTAMPTZ NOT NULL,
     revoked_at  TIMESTAMPTZ
 );
-CREATE INDEX refresh_tokens_device_idx ON refresh_tokens(device_id);
+CREATE INDEX IF NOT EXISTS refresh_tokens_device_idx ON refresh_tokens(device_id);
 
 -- Current head state per file. Ciphertext only; the server cannot decrypt.
 CREATE TABLE IF NOT EXISTS files (
@@ -52,7 +52,7 @@ CREATE TABLE IF NOT EXISTS files (
     change_seq         BIGINT NOT NULL,
     PRIMARY KEY (account_id, file_id)
 );
-CREATE INDEX files_change_seq_idx ON files(account_id, change_seq);
+CREATE INDEX IF NOT EXISTS files_change_seq_idx ON files(account_id, change_seq);
 
 -- Version history (retention-pruned by application logic).
 CREATE TABLE IF NOT EXISTS file_versions (
@@ -81,7 +81,7 @@ CREATE TABLE IF NOT EXISTS changes (
     origin_device_id UUID NOT NULL,
     created_at       TIMESTAMPTZ NOT NULL DEFAULT now()
 );
-CREATE INDEX changes_account_idx ON changes(account_id, change_seq);
+CREATE INDEX IF NOT EXISTS changes_account_idx ON changes(account_id, change_seq);
 
 -- Idempotency for mutating calls: same key -> stored response, no re-apply.
 CREATE TABLE IF NOT EXISTS idempotency_keys (
