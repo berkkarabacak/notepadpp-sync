@@ -1,0 +1,15 @@
+---
+BasedOnStyle: Microsoft
+Language: Cpp
+Standard: c++17
+ColumnLimit: 110
+IndentWidth: 4
+PointerAlignment: Left
+ReferenceAlignment: Left
+BreakBeforeBraces: Custom
+BraceWrapping:
+  AfterFunction: false
+  AfterControlStatement: false
+  AfterClass: false
+AllowShortFunctionsOnASingleLine: Empty
+...

@@ -1,0 +1,52 @@
+name: Plugin CI
+
+on:
+  pull_request:
+    paths:
+      - 'plugin/**'
+      - '.github/workflows/plugin-ci.yml'
+  push:
+    branches: [main]
+    paths:
+      - 'plugin/**'
+
+jobs:
+  build-test:
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Configure (x64)
+        run: cmake -B plugin/build -S plugin -A x64
+
+      - name: Build plugin (Release)
+        run: cmake --build plugin/build --config Release
+
+      - name: Run core tests
+        run: ctest --test-dir plugin/build -C Release --output-on-failure
+
+      - name: Static analysis (MSVC /analyze)
+        run: cmake --build plugin/build --config Release --target NppSync -- /p:RunCodeAnalysis=true /p:CodeAnalysisRuleSet=NativeRecommendedRules.ruleset
+        continue-on-error: true  # analysis is advisory until the rule set is tuned
+
+      - name: clang-format check
+        shell: pwsh
+        run: |
+          clang-format --version
+          $bad = @()
+          Get-ChildItem -Recurse plugin/src,plugin/tests -Include *.cpp,*.h | ForEach-Object {
+            $formatted = clang-format --style=file --output-replacements-xml $_.FullName
+            if ($formatted -match '<replacement ') { $bad += $_.FullName }
+          }
+          if ($bad.Count -gt 0) { $bad; exit 1 }
+
+      - name: Package artifact
+        shell: pwsh
+        run: |
+          New-Item -ItemType Directory -Force -Path dist | Out-Null
+          Copy-Item plugin/build/Release/NppSync.dll dist/NppSync.dll
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: NppSync-dll
+          path: dist/NppSync.dll

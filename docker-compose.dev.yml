@@ -1,0 +1,45 @@
+# ---------------------------------------------------------------------------
+# Notepad++ Sync — local development dependencies only.
+#
+#   docker compose -f docker-compose.dev.yml up -d
+#
+# Starts PostgreSQL (and optionally MinIO) with dev credentials. The Go server
+# itself is run locally:  cd server && go run ./cmd/server
+# HTTPS is optional in dev (NPSYNC_REQUIRE_HTTPS=false), required in prod.
+# ---------------------------------------------------------------------------
+
+services:
+  db:
+    image: postgres:16-alpine
+    environment:
+      POSTGRES_DB: npsync_dev
+      POSTGRES_USER: npsync
+      POSTGRES_PASSWORD: npsync_dev_password
+    ports:
+      - "5432:5432"
+    volumes:
+      - pgdata_dev:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U npsync -d npsync_dev"]
+      interval: 5s
+      timeout: 3s
+      retries: 12
+
+  # Optional S3-compatible blob store for testing the s3 backend locally:
+  #   docker compose -f docker-compose.dev.yml --profile s3 up -d
+  minio:
+    image: minio/minio:latest
+    profiles: ["s3"]
+    command: server /data --console-address ":9001"
+    environment:
+      MINIO_ROOT_USER: minioadmin
+      MINIO_ROOT_PASSWORD: minioadmin
+    ports:
+      - "9000:9000"
+      - "9001:9001"
+    volumes:
+      - minio_dev:/data
+
+volumes:
+  pgdata_dev:
+  minio_dev:

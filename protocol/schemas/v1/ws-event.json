@@ -1,0 +1,19 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://npsync.dev/schemas/v1/ws-event.json",
+  "title": "NPSync WebSocket event (protocol v1)",
+  "type": "object",
+  "required": ["type"],
+  "properties": {
+    "type": {
+      "type": "string",
+      "enum": ["file_changed", "file_deleted", "device_revoked", "session_changed", "ping"]
+    },
+    "file_id":          { "type": "string", "format": "uuid" },
+    "version":          { "type": "integer", "minimum": 1 },
+    "change_seq":       { "type": "integer", "minimum": 1 },
+    "origin_device_id": { "type": "string", "format": "uuid" },
+    "device_id":        { "type": "string", "format": "uuid" }
+  },
+  "additionalProperties": false
+}

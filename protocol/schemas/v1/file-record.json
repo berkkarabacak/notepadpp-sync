@@ -1,0 +1,33 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://npsync.dev/schemas/v1/file-record.json",
+  "title": "NPSync File Record (protocol v1)",
+  "type": "object",
+  "required": [
+    "file_id", "encrypted_metadata", "content_hash", "version",
+    "base_version", "version_vector", "deleted", "size", "modified_at",
+    "origin_device_id", "change_seq"
+  ],
+  "properties": {
+    "file_id":           { "type": "string", "format": "uuid" },
+    "encrypted_metadata":{ "type": "string", "contentEncoding": "base64url",
+                           "description": "AEAD ciphertext of {relative_path, mime, …}" },
+    "encrypted_content": { "type": "string", "contentEncoding": "base64url",
+                           "description": "AEAD ciphertext of file bytes; omitted in list responses" },
+    "content_hash":      { "type": "string", "pattern": "^[0-9a-f]{64}$",
+                           "description": "SHA-256 (hex) of the ciphertext" },
+    "version":           { "type": "integer", "minimum": 1 },
+    "base_version":      { "type": "integer", "minimum": 0 },
+    "version_vector":    { "type": "object",
+                           "additionalProperties": { "type": "integer", "minimum": 0 },
+                           "description": "device_id -> counter" },
+    "deleted":           { "type": "boolean" },
+    "size":              { "type": "integer", "minimum": 0,
+                           "description": "ciphertext size in bytes" },
+    "modified_at":       { "type": "string", "format": "date-time" },
+    "origin_device_id":  { "type": "string", "format": "uuid" },
+    "change_seq":        { "type": "integer", "minimum": 1 },
+    "idempotency_key":   { "type": "string", "format": "uuid" }
+  },
+  "additionalProperties": false
+}

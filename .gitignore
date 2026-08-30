@@ -1,0 +1,51 @@
+# ---- build outputs ----
+build/
+out/
+dist/
+*.user
+*.suo
+*.opensdf
+*.sdf
+
+# ---- binaries ----
+*.dll
+*.exe
+*.obj
+*.o
+*.a
+*.lib
+*.pdb
+*.ilk
+
+# ---- Go ----
+server/bin/
+server/server
+*.test
+coverage.out
+
+# ---- CMake ----
+CMakeCache.txt
+CMakeFiles/
+cmake_install.cmake
+_deps/
+plugin/build*/
+
+# ---- local dev / secrets ----
+.env
+.env.*
+!.env.example
+*.local
+secrets/
+
+# ---- data dirs from local runs ----
+data/
+*.db
+*.db-journal
+*.sqlite
+*.sqlite-journal
+
+# ---- OS / editors ----
+.DS_Store
+Thumbs.db
+.vscode/
+.idea/

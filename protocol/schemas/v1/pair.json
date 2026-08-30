@@ -1,0 +1,17 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://npsync.dev/schemas/v1/pair.json",
+  "title": "NPSync device pairing (protocol v1)",
+  "type": "object",
+  "required": ["action"],
+  "properties": {
+    "action":      { "type": "string", "enum": ["request", "approve", "poll"] },
+    "pairing_code":{ "type": "string", "pattern": "^[A-Z2-9]{4}-[A-Z2-9]{4}$" },
+    "for_device_id": { "type": "string", "format": "uuid" },
+    "wrapped_master_key": {
+      "type": "string", "contentEncoding": "base64url",
+      "description": "Account master key re-encrypted to a key derived from the pairing code. Opaque to the server."
+    }
+  },
+  "additionalProperties": false
+}

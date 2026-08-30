@@ -1,0 +1,63 @@
+name: Server CI
+
+on:
+  pull_request:
+    paths:
+      - 'server/**'
+      - '.github/workflows/server-ci.yml'
+  push:
+    branches: [main]
+    paths:
+      - 'server/**'
+
+jobs:
+  lint-test:
+    runs-on: ubuntu-latest
+    services:
+      postgres:
+        image: postgres:16-alpine
+        env:
+          POSTGRES_DB: npsync_test
+          POSTGRES_USER: npsync
+          POSTGRES_PASSWORD: npsync_test_password
+        ports: ['5432:5432']
+        options: >-
+          --health-cmd "pg_isready -U npsync -d npsync_test"
+          --health-interval 5s --health-timeout 3s --health-retries 12
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-go@v5
+        with:
+          go-version: '1.22'
+
+      - name: Resolve modules
+        working-directory: server
+        run: go mod tidy
+
+      - name: gofmt check
+        working-directory: server
+        run: |
+          unformatted=$(gofmt -l .)
+          if [ -n "$unformatted" ]; then echo "$unformatted"; exit 1; fi
+
+      - name: go vet
+        working-directory: server
+        run: go vet ./...
+
+      - name: Unit + integration tests (in-memory store)
+        working-directory: server
+        run: go test ./... -race -count=1
+
+      - name: Postgres integration tests
+        working-directory: server
+        env:
+          NPSYNC_TEST_DATABASE_URL: postgres://npsync:npsync_test_password@localhost:5432/npsync_test?sslmode=disable
+        run: go test ./internal/store/ -run Postgres -count=1 -v
+
+  docker:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Build server Docker image
+        run: docker build -t npsync-server:ci ./server
