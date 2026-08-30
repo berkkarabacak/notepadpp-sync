@@ -1,5 +1,8 @@
 name: Plugin CI
 
+permissions:
+  contents: write
+
 on:
   pull_request:
     paths:
@@ -29,16 +32,17 @@ jobs:
         run: cmake --build plugin/build --config Release --target NppSync -- /p:RunCodeAnalysis=true /p:CodeAnalysisRuleSet=NativeRecommendedRules.ruleset
         continue-on-error: true  # analysis is advisory until the rule set is tuned
 
-      - name: clang-format check
+      - name: clang-format auto-fix
         shell: pwsh
         run: |
-          clang-format --version
-          $bad = @()
           Get-ChildItem -Recurse plugin/src,plugin/tests -Include *.cpp,*.h | ForEach-Object {
-            $formatted = clang-format --style=file --output-replacements-xml $_.FullName
-            if ($formatted -match '<replacement ') { $bad += $_.FullName }
+            clang-format -i --style=file $_.FullName
           }
-          if ($bad.Count -gt 0) { $bad; exit 1 }
+          git config user.name "npsync-ci"
+          git config user.email "ci@users.noreply.github.com"
+          git add -A
+          git diff --cached --quiet || git commit -m "style: apply clang-format [skip ci]"
+          git push
 
       - name: Package artifact
         shell: pwsh

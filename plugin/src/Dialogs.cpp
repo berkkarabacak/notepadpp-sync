@@ -179,7 +179,7 @@ void Dialogs::showStatus(HWND parent, SyncEngine& engine) {
 
 void Dialogs::showSyncedFiles(HWND parent, SyncEngine& engine) {
     // Folder picker via the shell; added roots are watched immediately.
-    CoInitializeEx(nullptr, COINIT_APARTMENTTHREADED);
+    (void)CoInitializeEx(nullptr, COINIT_APARTMENTTHREADED);
     wchar_t path[MAX_PATH] = {0};
     BROWSEINFOW bi{};
     bi.hwndOwner = parent;

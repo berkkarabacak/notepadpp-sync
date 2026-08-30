@@ -34,9 +34,12 @@ void Logger::log(LogLevel level, const std::string& msg) {
     swprintf(name, 64, L"npsync-%04d%02d.log", lt.tm_year + 1900, lt.tm_mon + 1);
 
     static const char* lvl[] = {"ERROR", "WARN ", "INFO ", "DEBUG"};
+    int idx = static_cast<int>(level);
+    if (idx < 0) idx = 0;
+    if (idx > 3) idx = 3;
     char line[2048];
     snprintf(line, sizeof(line), "%02d:%02d:%02d [%s] %s\n",
-             lt.tm_hour, lt.tm_min, lt.tm_sec, lvl[static_cast<int>(level)], msg.c_str());
+             lt.tm_hour, lt.tm_min, lt.tm_sec, lvl[idx], msg.c_str());
 
     std::ofstream f(dir_ + L"\\" + name, std::ios::app);
     if (f) f << line;

@@ -4,10 +4,10 @@
 FROM golang:1.22-alpine AS build
 WORKDIR /src
 RUN apk add --no-cache ca-certificates
-COPY go.mod ./
-# go.sum may be absent in a fresh checkout; resolve dependencies now.
-RUN go mod download && go mod tidy
 COPY . .
+# go.sum may be absent in a fresh checkout; resolve dependencies now
+# (must happen AFTER sources are copied or tidy would drop all requirements).
+RUN go mod tidy && go mod download
 RUN CGO_ENABLED=0 GOOS=linux GOARCH=amd64 go build -trimpath -ldflags="-s -w" -o /out/server ./cmd/server
 
 # ---- runtime stage ----
