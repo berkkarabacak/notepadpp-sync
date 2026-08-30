@@ -7,6 +7,7 @@
 #include <windows.h>
 #include <bcrypt.h>
 
+#include <cctype>
 #include <stdexcept>
 #include <cstring>
 
