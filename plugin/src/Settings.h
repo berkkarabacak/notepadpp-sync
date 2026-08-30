@@ -7,15 +7,18 @@
 #include <string>
 #include <vector>
 
-namespace npsync {
+namespace npsync
+{
 
-enum class SessionSyncMode {
+enum class SessionSyncMode
+{
     FilesOnly = 0,
     FilesAndTabs = 1,
     FilesTabsCursor = 2,
 };
 
-struct Settings {
+struct Settings
+{
     // General
     bool startSyncAutomatically = true;
     bool pauseSync = false;
@@ -41,12 +44,12 @@ struct Settings {
     // Advanced
     std::string backendUrl = "https://sync.example.com";
     bool debugLogging = false;
-    std::wstring databaseLocation;                // empty = default
+    std::wstring databaseLocation; // empty = default
     int versionRetention = 30;
 };
 
 class SettingsStore {
-public:
+  public:
     explicit SettingsStore(std::wstring appDataDir);
 
     bool load(Settings& out);
@@ -57,9 +60,11 @@ public:
     bool loadSecret(const std::wstring& name, std::string& valueOut);
     bool deleteSecret(const std::wstring& name);
 
-    const std::wstring& dir() const { return dir_; }
+    const std::wstring& dir() const {
+        return dir_;
+    }
 
-private:
+  private:
     std::wstring dir_;
     std::wstring settingsPath() const;
     std::wstring secretPath(const std::wstring& name) const;

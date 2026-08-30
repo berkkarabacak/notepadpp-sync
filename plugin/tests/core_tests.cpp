@@ -15,11 +15,14 @@ using namespace npsync;
 static int g_failures = 0;
 static int g_checks = 0;
 
-#define CHECK(cond) do { \
-    ++g_checks; \
-    if (!(cond)) { ++g_failures; \
-        std::printf("FAIL %s:%d: %s\n", __FILE__, __LINE__, #cond); } \
-} while (0)
+#define CHECK(cond)                                                                                          \
+    do {                                                                                                     \
+        ++g_checks;                                                                                          \
+        if (!(cond)) {                                                                                       \
+            ++g_failures;                                                                                    \
+            std::printf("FAIL %s:%d: %s\n", __FILE__, __LINE__, #cond);                                      \
+        }                                                                                                    \
+    } while (0)
 
 // ---- crypto ----
 
@@ -83,8 +86,7 @@ void testRecoveryKey() {
 
 void testSha256() {
     // RFC 4231 / well-known vector: sha256("abc").
-    CHECK(Crypto::sha256Hex("abc") ==
-          "ba7816bf8f01cfea414140de5dae2223b00361a396177a9cb410ff61f20015ad");
+    CHECK(Crypto::sha256Hex("abc") == "ba7816bf8f01cfea414140de5dae2223b00361a396177a9cb410ff61f20015ad");
 }
 
 void testBase64Url() {
@@ -161,15 +163,14 @@ void testMergeCrlf() {
 // ---- ignore rules ----
 
 void testIgnoreRules() {
-    auto rules = IgnoreRules::parse(
-        "# comment\n"
-        "*.tmp\n"
-        "*.log\n"
-        ".git/\n"
-        "node_modules/\n"
-        "/root-only.txt\n"
-        "build/output/\n"
-        "!keep.tmp\n");
+    auto rules = IgnoreRules::parse("# comment\n"
+                                    "*.tmp\n"
+                                    "*.log\n"
+                                    ".git/\n"
+                                    "node_modules/\n"
+                                    "/root-only.txt\n"
+                                    "build/output/\n"
+                                    "!keep.tmp\n");
 
     CHECK(rules.ignored("notes.tmp", false));
     CHECK(rules.ignored("deep/dir/x.log", false));
@@ -181,7 +182,7 @@ void testIgnoreRules() {
     CHECK(!rules.ignored("sub/root-only.txt", false));
     CHECK(rules.ignored("build/output", true));
     CHECK(rules.ignored("build/output/f.bin", false));
-    CHECK(!rules.ignored("keep.tmp", false));       // negated
+    CHECK(!rules.ignored("keep.tmp", false)); // negated
     CHECK(!rules.ignored("notes.txt", false));
     CHECK(!rules.ignored("src/main.cpp", false));
 }
@@ -220,8 +221,10 @@ void testJoinInsideRoot() {
 
 void testVersionVectors() {
     VersionVector a, b;
-    a.entries["A"] = 5; a.entries["B"] = 3;
-    b.entries["A"] = 5; b.entries["B"] = 3;
+    a.entries["A"] = 5;
+    a.entries["B"] = 3;
+    b.entries["A"] = 5;
+    b.entries["B"] = 3;
     CHECK(a.equal(b));
     CHECK(!a.concurrent(b));
 

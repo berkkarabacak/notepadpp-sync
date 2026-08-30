@@ -9,12 +9,14 @@
 
 #include <string>
 
-namespace npsync {
+namespace npsync
+{
 
 class SyncEngine;
 
 // Each dialog is modal against the Notepad++ main window.
-namespace Dialogs {
+namespace Dialogs
+{
 
 // Sign in / create account (email, password, server URL in advanced).
 bool showSignIn(HWND parent, SyncEngine& engine);

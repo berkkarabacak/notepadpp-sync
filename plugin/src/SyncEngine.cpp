@@ -13,9 +13,11 @@
 
 using nlohmann::json;
 
-namespace npsync {
+namespace npsync
+{
 
-namespace {
+namespace
+{
 constexpr int kMaxBackupsPerFile = 5;
 
 std::wstring dirOf(const std::wstring& p) {
@@ -31,15 +33,16 @@ std::wstring fileNameOf(const std::wstring& p) {
 
 SyncEngine::SyncEngine() = default;
 
-SyncEngine::~SyncEngine() { stop(); }
+SyncEngine::~SyncEngine() {
+    stop();
+}
 
 void SyncEngine::init(SettingsStore* store, Settings* settings) {
     store_ = store;
     settings_ = settings;
 
-    std::wstring dbPath = settings->databaseLocation.empty()
-        ? store->dir() + L"\\sync.db"
-        : settings->databaseLocation;
+    std::wstring dbPath =
+        settings->databaseLocation.empty() ? store->dir() + L"\\sync.db" : settings->databaseLocation;
     if (!db_.open(dbPath)) {
         setStatus(SyncStatus::Error, "Failed to open local database");
         return;
@@ -63,7 +66,8 @@ void SyncEngine::init(SettingsStore* store, Settings* settings) {
 }
 
 void SyncEngine::start() {
-    if (running_) return;
+    if (running_)
+        return;
     running_ = true;
     refreshIgnoreRules();
 
@@ -74,10 +78,13 @@ void SyncEngine::start() {
 
     // WebSocket push (falls back to polling automatically when down).
     if (settings_->webSocketEnabled && api_->hasTokens()) {
-        ws_ = std::make_unique<WsClient>(settings_->backendUrl,
-            [this](const json& ev) { onWsEvent(ev); },
+        ws_ = std::make_unique<WsClient>(
+            settings_->backendUrl, [this](const json& ev) { onWsEvent(ev); },
             [this](bool connected) {
-                if (connected) { online_ = true; syncRequested_ = true; }
+                if (connected) {
+                    online_ = true;
+                    syncRequested_ = true;
+                }
             });
         ws_->start([this] { return api_ ? api_->accessToken() : std::string(); });
     }
@@ -86,22 +93,32 @@ void SyncEngine::start() {
     pollerThread_ = std::thread([this] { pollerLoop(); });
     scannerThread_ = std::thread([this] { scannerLoop(); });
 
-    if (api_->hasTokens()) setStatus(SyncStatus::Synced, "Ready");
-    else setStatus(SyncStatus::SignedOut, "Signed out");
+    if (api_->hasTokens())
+        setStatus(SyncStatus::Synced, "Ready");
+    else
+        setStatus(SyncStatus::SignedOut, "Signed out");
 }
 
 void SyncEngine::stop() {
     running_ = false;
     watcher_.stop();
-    if (ws_) ws_->stop();
-    if (workerThread_.joinable()) workerThread_.join();
-    if (pollerThread_.joinable()) pollerThread_.join();
-    if (scannerThread_.joinable()) scannerThread_.join();
+    if (ws_)
+        ws_->stop();
+    if (workerThread_.joinable())
+        workerThread_.join();
+    if (pollerThread_.joinable())
+        pollerThread_.join();
+    if (scannerThread_.joinable())
+        scannerThread_.join();
 }
 
-std::string SyncEngine::deviceId() const { return settings_ ? settings_->deviceId : std::string(); }
+std::string SyncEngine::deviceId() const {
+    return settings_ ? settings_->deviceId : std::string();
+}
 
-bool SyncEngine::online() { return online_; }
+bool SyncEngine::online() {
+    return online_;
+}
 
 std::string SyncEngine::nowTimeString() {
     time_t t = time(nullptr);
@@ -119,10 +136,13 @@ void SyncEngine::setStatus(SyncStatus s, const std::string& text) {
         status_.statusText = text;
         status_.pendingUploads = db_.isOpen() ? db_.pendingOpCount() : 0;
         status_.conflicts = db_.isOpen() ? db_.conflictCount() : 0;
-        if (s == SyncStatus::Synced) status_.lastSyncTime = nowTimeString();
-        if (s == SyncStatus::Conflict) status_.conflicts = db_.conflictCount();
+        if (s == SyncStatus::Synced)
+            status_.lastSyncTime = nowTimeString();
+        if (s == SyncStatus::Conflict)
+            status_.conflicts = db_.conflictCount();
     }
-    if (onStatusChanged) onStatusChanged();
+    if (onStatusChanged)
+        onStatusChanged();
 }
 
 StatusInfo SyncEngine::status() {
@@ -138,14 +158,18 @@ StatusInfo SyncEngine::status() {
 
 // ---- auth & keys ----
 
-bool SyncEngine::isSignedIn() const { return api_ && api_->hasTokens(); }
+bool SyncEngine::isSignedIn() const {
+    return api_ && api_->hasTokens();
+}
 
-bool SyncEngine::signIn(const std::string& email, const std::string& password,
-                        std::string& errorOut, bool createAccount) {
-    ApiResponse r = createAccount
-        ? api_->registerAccount(email, password, settings_->deviceName)
-        : api_->login(email, password, settings_->deviceName);
-    if (!r.transportOk) { errorOut = "Cannot reach server: " + r.transportError; return false; }
+bool SyncEngine::signIn(const std::string& email, const std::string& password, std::string& errorOut,
+                        bool createAccount) {
+    ApiResponse r = createAccount ? api_->registerAccount(email, password, settings_->deviceName)
+                                  : api_->login(email, password, settings_->deviceName);
+    if (!r.transportOk) {
+        errorOut = "Cannot reach server: " + r.transportError;
+        return false;
+    }
     if (r.serverProtocol != 0 && r.serverProtocol != 1) {
         errorOut = "This server speaks an incompatible protocol version. Update the plugin or the server.";
         return false;
@@ -165,7 +189,8 @@ bool SyncEngine::signIn(const std::string& email, const std::string& password,
 }
 
 void SyncEngine::signOut() {
-    if (api_ && api_->hasTokens()) api_->logout();
+    if (api_ && api_->hasTokens())
+        api_->logout();
     if (store_) {
         store_->deleteSecret(L"access_token");
         store_->deleteSecret(L"refresh_token");
@@ -173,10 +198,13 @@ void SyncEngine::signOut() {
     setStatus(SyncStatus::SignedOut, "Signed out");
 }
 
-bool SyncEngine::hasMasterKey() const { return masterKey_.size() == kMasterKeyLen; }
+bool SyncEngine::hasMasterKey() const {
+    return masterKey_.size() == kMasterKeyLen;
+}
 
 bool SyncEngine::generateMasterKeyIfNeeded() {
-    if (hasMasterKey()) return true;
+    if (hasMasterKey())
+        return true;
     masterKey_ = Crypto::generateMasterKey();
     // Also generate a recovery key: wrap the master key under it and store
     // the wrapped blob so the recovery key alone can unlock the account.
@@ -184,25 +212,36 @@ bool SyncEngine::generateMasterKeyIfNeeded() {
     Bytes salt = Crypto::random(16);
     Bytes wk = Crypto::deriveKeyFromCode(recovery, salt);
     Bytes wrapped = Crypto::wrapMasterKey(masterKey_, wk);
-    json rec = {{"salt", Crypto::base64UrlEncode(salt)},
-                {"wrapped", Crypto::base64UrlEncode(wrapped)}};
-    if (!store_->saveSecret(L"recovery_wrapped", rec.dump())) return false;
-    if (!store_->saveSecret(L"recovery_key_display", recovery)) return false;
+    json rec = {{"salt", Crypto::base64UrlEncode(salt)}, {"wrapped", Crypto::base64UrlEncode(wrapped)}};
+    if (!store_->saveSecret(L"recovery_wrapped", rec.dump()))
+        return false;
+    if (!store_->saveSecret(L"recovery_key_display", recovery))
+        return false;
     return store_->saveSecret(L"master_key", Crypto::base64UrlEncode(masterKey_));
 }
 
 bool SyncEngine::unlockWithRecoveryKey(const std::string& recoveryKey) {
     std::string normalized;
-    if (!Crypto::normalizeRecoveryKey(recoveryKey, normalized)) return false;
+    if (!Crypto::normalizeRecoveryKey(recoveryKey, normalized))
+        return false;
     std::string blobJson;
-    if (!store_->loadSecret(L"recovery_wrapped", blobJson)) return false;
+    if (!store_->loadSecret(L"recovery_wrapped", blobJson))
+        return false;
     json rec;
-    try { rec = json::parse(blobJson); } catch (...) { return false; }
+    try {
+        rec = json::parse(blobJson);
+    }
+    catch (...) {
+        return false;
+    }
     Bytes salt, wrapped, mk;
-    if (!Crypto::base64UrlDecode(rec.value("salt", ""), salt)) return false;
-    if (!Crypto::base64UrlDecode(rec.value("wrapped", ""), wrapped)) return false;
+    if (!Crypto::base64UrlDecode(rec.value("salt", ""), salt))
+        return false;
+    if (!Crypto::base64UrlDecode(rec.value("wrapped", ""), wrapped))
+        return false;
     Bytes wk = Crypto::deriveKeyFromCode(normalized, salt);
-    if (!Crypto::unwrapMasterKey(wrapped, wk, mk)) return false;
+    if (!Crypto::unwrapMasterKey(wrapped, wk, mk))
+        return false;
     masterKey_ = mk;
     return store_->saveSecret(L"master_key", Crypto::base64UrlEncode(masterKey_));
 }
@@ -217,38 +256,60 @@ std::string SyncEngine::exportRecoveryKeyWrapped() {
 bool SyncEngine::pairNewDevice(std::string& codeOut, std::string& errorOut) {
     // This device wants to join: request a code. An existing device approves.
     ApiResponse r = api_->pairRequest();
-    if (r.status != 200) { errorOut = r.body.value("message", "pairing request failed"); return false; }
+    if (r.status != 200) {
+        errorOut = r.body.value("message", "pairing request failed");
+        return false;
+    }
     codeOut = r.body.value("pairing_code", "");
     return !codeOut.empty();
 }
 
 bool SyncEngine::approvePairing(const std::string& code, std::string& errorOut) {
-    if (!hasMasterKey()) { errorOut = "no master key on this device"; return false; }
+    if (!hasMasterKey()) {
+        errorOut = "no master key on this device";
+        return false;
+    }
     // Wrap the master key under a key derived from the pairing code.
     Bytes salt = Crypto::random(16);
     Bytes wk = Crypto::deriveKeyFromCode(code, salt);
     Bytes wrapped = Crypto::wrapMasterKey(masterKey_, wk);
-    json payload = {{"salt", Crypto::base64UrlEncode(salt)},
-                    {"wrapped", Crypto::base64UrlEncode(wrapped)}};
-    ApiResponse r = api_->pairApprove(code, Crypto::base64UrlEncode(
-        Bytes(payload.dump().begin(), payload.dump().end())));
-    if (r.status != 200) { errorOut = r.body.value("message", "approval failed"); return false; }
+    json payload = {{"salt", Crypto::base64UrlEncode(salt)}, {"wrapped", Crypto::base64UrlEncode(wrapped)}};
+    ApiResponse r =
+        api_->pairApprove(code, Crypto::base64UrlEncode(Bytes(payload.dump().begin(), payload.dump().end())));
+    if (r.status != 200) {
+        errorOut = r.body.value("message", "approval failed");
+        return false;
+    }
     return true;
 }
 
 bool SyncEngine::completePairing(const std::string& code, std::string& errorOut) {
     ApiResponse r = api_->pairPoll(code);
-    if (r.status == 410) { errorOut = "pairing code expired"; return false; }
-    if (r.status != 200) { errorOut = r.body.value("message", "pairing poll failed"); return false; }
-    if (r.body.value("status", "") != "approved") { errorOut = "pending"; return false; }
+    if (r.status == 410) {
+        errorOut = "pairing code expired";
+        return false;
+    }
+    if (r.status != 200) {
+        errorOut = r.body.value("message", "pairing poll failed");
+        return false;
+    }
+    if (r.body.value("status", "") != "approved") {
+        errorOut = "pending";
+        return false;
+    }
     Bytes blob;
     if (!Crypto::base64UrlDecode(r.body.value("wrapped_master_key", ""), blob)) {
         errorOut = "bad wrapped key";
         return false;
     }
     json payload;
-    try { payload = json::parse(std::string(blob.begin(), blob.end())); }
-    catch (...) { errorOut = "bad wrapped key"; return false; }
+    try {
+        payload = json::parse(std::string(blob.begin(), blob.end()));
+    }
+    catch (...) {
+        errorOut = "bad wrapped key";
+        return false;
+    }
     Bytes salt, wrapped, mk;
     if (!Crypto::base64UrlDecode(payload.value("salt", ""), salt) ||
         !Crypto::base64UrlDecode(payload.value("wrapped", ""), wrapped)) {
@@ -269,7 +330,8 @@ void SyncEngine::setPaused(bool paused) {
     settings_->pauseSync = paused;
     store_->save(*settings_);
     setStatus(paused ? SyncStatus::Paused : SyncStatus::Synced, paused ? "Paused" : "Resumed");
-    if (!paused) syncRequested_ = true;
+    if (!paused)
+        syncRequested_ = true;
 }
 
 void SyncEngine::syncNow() {
@@ -284,7 +346,10 @@ bool SyncEngine::refreshIgnoreRules() {
     std::lock_guard<std::mutex> lk(rulesMu_);
     rootRules_.clear();
     std::string extra;
-    for (auto& p : settings_->extraIgnorePatterns) { extra += p; extra += '\n'; }
+    for (auto& p : settings_->extraIgnorePatterns) {
+        extra += p;
+        extra += '\n';
+    }
     for (auto& [id, path] : db_.listSyncRoots()) {
         std::string text = extra;
         std::wstring ignoreFile = path + L"\\.npsyncignore";
@@ -303,21 +368,23 @@ bool SyncEngine::refreshIgnoreRules() {
 bool SyncEngine::ignored(const std::string& relPath, bool isDir) {
     std::lock_guard<std::mutex> lk(rulesMu_);
     for (auto& [id, rules] : rootRules_)
-        if (rules.ignored(relPath, isDir)) return true;
+        if (rules.ignored(relPath, isDir))
+            return true;
     return false;
 }
 
 // ---- path mapping ----
 
-std::optional<std::pair<std::string, std::wstring>>
-SyncEngine::locateInRoots(const std::wstring& absPath) {
+std::optional<std::pair<std::string, std::wstring>> SyncEngine::locateInRoots(const std::wstring& absPath) {
     for (auto& [id, root] : db_.listSyncRoots()) {
         if (PathUtil::isInsideRoot(root, absPath)) {
             std::wstring rel = absPath.substr(root.size());
-            while (!rel.empty() && (rel.front() == L'\\' || rel.front() == L'/')) rel.erase(rel.begin());
+            while (!rel.empty() && (rel.front() == L'\\' || rel.front() == L'/'))
+                rel.erase(rel.begin());
             std::string rel8 = PathUtil::wideToUtf8(rel);
             std::string norm;
-            if (!PathUtil::normalizeRelative(rel8, norm)) return std::nullopt;
+            if (!PathUtil::normalizeRelative(rel8, norm))
+                return std::nullopt;
             return std::make_pair(id + ":" + norm, root);
         }
     }
@@ -325,7 +392,8 @@ SyncEngine::locateInRoots(const std::wstring& absPath) {
         std::wstring lf = f, la = absPath;
         std::transform(lf.begin(), lf.end(), lf.begin(), ::towlower);
         std::transform(la.begin(), la.end(), la.begin(), ::towlower);
-        if (lf == la) return std::make_pair(std::string("file:") + PathUtil::wideToUtf8(fileNameOf(f)), dirOf(f));
+        if (lf == la)
+            return std::make_pair(std::string("file:") + PathUtil::wideToUtf8(fileNameOf(f)), dirOf(f));
     }
     return std::nullopt;
 }
@@ -333,18 +401,21 @@ SyncEngine::locateInRoots(const std::wstring& absPath) {
 std::optional<std::wstring> SyncEngine::absPathForRel(const std::string& relPath) {
     // relPath format: "<rootId>:<normalized path>" or "file:<name>".
     size_t colon = relPath.find(':');
-    if (colon == std::string::npos) return std::nullopt;
+    if (colon == std::string::npos)
+        return std::nullopt;
     std::string rootId = relPath.substr(0, colon);
     std::string rel = relPath.substr(colon + 1);
     for (auto& [id, root] : db_.listSyncRoots()) {
         if (id == rootId) {
             std::wstring abs;
-            if (PathUtil::joinInsideRoot(root, rel, abs)) return abs;
+            if (PathUtil::joinInsideRoot(root, rel, abs))
+                return abs;
             return std::nullopt;
         }
     }
     for (auto& [id, f] : db_.listSyncFiles()) {
-        if (rootId == "file" && PathUtil::wideToUtf8(fileNameOf(f)) == rel) return f;
+        if (rootId == "file" && PathUtil::wideToUtf8(fileNameOf(f)) == rel)
+            return f;
     }
     return std::nullopt;
 }
@@ -353,7 +424,8 @@ std::optional<std::wstring> SyncEngine::absPathForRel(const std::string& relPath
 
 bool SyncEngine::readFileBytes(const std::wstring& absPath, Bytes& out) {
     std::ifstream f(absPath, std::ios::binary);
-    if (!f) return false;
+    if (!f)
+        return false;
     out.assign(std::istreambuf_iterator<char>(f), std::istreambuf_iterator<char>());
     return true;
 }
@@ -362,10 +434,14 @@ bool SyncEngine::writeFileAtomic(const std::wstring& absPath, const Bytes& data)
     std::wstring tmp = absPath + L".npsync-tmp";
     {
         std::ofstream f(tmp, std::ios::binary | std::ios::trunc);
-        if (!f) return false;
+        if (!f)
+            return false;
         if (!data.empty())
             f.write(reinterpret_cast<const char*>(data.data()), (std::streamsize)data.size());
-        if (!f.good()) { DeleteFileW(tmp.c_str()); return false; }
+        if (!f.good()) {
+            DeleteFileW(tmp.c_str());
+            return false;
+        }
         f.flush();
     }
     // Verify hash before replacing (protects against partial writes).
@@ -374,8 +450,7 @@ bool SyncEngine::writeFileAtomic(const std::wstring& absPath, const Bytes& data)
         DeleteFileW(tmp.c_str());
         return false;
     }
-    if (!MoveFileExW(tmp.c_str(), absPath.c_str(),
-                     MOVEFILE_REPLACE_EXISTING | MOVEFILE_WRITE_THROUGH)) {
+    if (!MoveFileExW(tmp.c_str(), absPath.c_str(), MOVEFILE_REPLACE_EXISTING | MOVEFILE_WRITE_THROUGH)) {
         DeleteFileW(tmp.c_str());
         return false;
     }
@@ -383,8 +458,7 @@ bool SyncEngine::writeFileAtomic(const std::wstring& absPath, const Bytes& data)
 }
 
 std::wstring SyncEngine::shadowPath(const std::string& relKey) const {
-    return store_->dir() + L"\\base\\" +
-           PathUtil::utf8ToWide(Crypto::sha256Hex(relKey)) + L".shadow";
+    return store_->dir() + L"\\base\\" + PathUtil::utf8ToWide(Crypto::sha256Hex(relKey)) + L".shadow";
 }
 
 void SyncEngine::writeShadow(const std::string& relKey, const Bytes& content) {
@@ -396,7 +470,8 @@ bool SyncEngine::readShadow(const std::string& relKey, Bytes& out) {
     return readFileBytes(shadowPath(relKey), out);
 }
 
-void SyncEngine::backupReplaced(const std::wstring& absPath) {    // Keep the last N replaced versions next to the data dir.
+void SyncEngine::backupReplaced(
+    const std::wstring& absPath) { // Keep the last N replaced versions next to the data dir.
     std::wstring backupDir = store_->dir() + L"\\backups";
     CreateDirectoryW(backupDir.c_str(), nullptr);
     std::wstring name = fileNameOf(absPath);
@@ -408,7 +483,9 @@ void SyncEngine::backupReplaced(const std::wstring& absPath) {    // Keep the la
     HANDLE h = FindFirstFileW(pattern.c_str(), &fd);
     std::vector<std::wstring> found;
     if (h != INVALID_HANDLE_VALUE) {
-        do { found.push_back(fd.cFileName); } while (FindNextFileW(h, &fd));
+        do {
+            found.push_back(fd.cFileName);
+        } while (FindNextFileW(h, &fd));
         FindClose(h);
     }
     if (found.size() > kMaxBackupsPerFile) {
@@ -421,8 +498,7 @@ void SyncEngine::backupReplaced(const std::wstring& absPath) {    // Keep the la
 // ---- upload path ----
 
 json SyncEngine::buildFilePayload(const std::string& relPath, const std::wstring& absPath,
-                                  const Bytes& plaintext, int64_t baseVersion,
-                                  const VersionVector& vv) {
+                                  const Bytes& plaintext, int64_t baseVersion, const VersionVector& vv) {
     Bytes encContent = Crypto::encrypt(masterKey_, plaintext, "file");
     json meta = {{"relative_path", relPath}};
     std::string metaStr = meta.dump();
@@ -436,10 +512,9 @@ json SyncEngine::buildFilePayload(const std::string& relPath, const std::wstring
         uuid[6] = (uuid[6] & 0x0f) | 0x40;
         uuid[8] = (uuid[8] & 0x3f) | 0x80;
         char buf[37];
-        snprintf(buf, sizeof(buf),
-                 "%02x%02x%02x%02x-%02x%02x-%02x%02x-%02x%02x-%02x%02x%02x%02x%02x%02x",
-                 uuid[0], uuid[1], uuid[2], uuid[3], uuid[4], uuid[5], uuid[6], uuid[7],
-                 uuid[8], uuid[9], uuid[10], uuid[11], uuid[12], uuid[13], uuid[14], uuid[15]);
+        snprintf(buf, sizeof(buf), "%02x%02x%02x%02x-%02x%02x-%02x%02x-%02x%02x-%02x%02x%02x%02x%02x%02x",
+                 uuid[0], uuid[1], uuid[2], uuid[3], uuid[4], uuid[5], uuid[6], uuid[7], uuid[8], uuid[9],
+                 uuid[10], uuid[11], uuid[12], uuid[13], uuid[14], uuid[15]);
         fileId = buf;
     }
 
@@ -455,8 +530,8 @@ json SyncEngine::buildFilePayload(const std::string& relPath, const std::wstring
     payload["version_vector"] = json::parse(out.toJson());
     payload["size"] = encContent.size();
     payload["modified_at"] = ""; // server assigns when empty
-    payload["idempotency_key"] = Crypto::sha256Hex(relPath + std::to_string(baseVersion) +
-                                                   Crypto::sha256Hex(plaintext)).substr(0, 36);
+    payload["idempotency_key"] =
+        Crypto::sha256Hex(relPath + std::to_string(baseVersion) + Crypto::sha256Hex(plaintext)).substr(0, 36);
     return payload;
 }
 
@@ -469,12 +544,17 @@ void SyncEngine::queueUpload(const std::string& relPath, const std::wstring& abs
     syncRequested_ = true;
 }
 
-bool SyncEngine::uploadFile(const std::string& relPath, const std::wstring& absPath,
-                            std::string& errorOut) {
-    if (!hasMasterKey()) { errorOut = "encryption not set up"; return false; }
+bool SyncEngine::uploadFile(const std::string& relPath, const std::wstring& absPath, std::string& errorOut) {
+    if (!hasMasterKey()) {
+        errorOut = "encryption not set up";
+        return false;
+    }
 
     Bytes plaintext;
-    if (!readFileBytes(absPath, plaintext)) { errorOut = "cannot read file"; return false; }
+    if (!readFileBytes(absPath, plaintext)) {
+        errorOut = "cannot read file";
+        return false;
+    }
     if ((int64_t)plaintext.size() > settings_->maxFileBytes) {
         errorOut = "file exceeds max size";
         return false;
@@ -490,11 +570,14 @@ bool SyncEngine::uploadFile(const std::string& relPath, const std::wstring& absP
     json payload = buildFilePayload(relPath, absPath, plaintext, baseVersion, vv);
     std::string fileId = payload["file_id"].get<std::string>();
 
-    ApiResponse r = (baseVersion == 0 && (!st || st->remoteVersion == 0))
-        ? api_->createFile(payload)
-        : api_->updateFile(fileId, payload);
+    ApiResponse r = (baseVersion == 0 && (!st || st->remoteVersion == 0)) ? api_->createFile(payload)
+                                                                          : api_->updateFile(fileId, payload);
 
-    if (!r.transportOk) { errorOut = "offline"; online_ = false; return false; }
+    if (!r.transportOk) {
+        errorOut = "offline";
+        online_ = false;
+        return false;
+    }
     online_ = true;
 
     if (r.status == 200 || r.status == 201) {
@@ -522,9 +605,16 @@ bool SyncEngine::uploadFile(const std::string& relPath, const std::wstring& absP
 
 bool SyncEngine::deleteRemote(const std::string& relPath, std::string& errorOut) {
     auto st = db_.getFile(relPath);
-    if (!st || st->fileId.empty()) { db_.removeFile(relPath); return true; }
+    if (!st || st->fileId.empty()) {
+        db_.removeFile(relPath);
+        return true;
+    }
     ApiResponse r = api_->deleteFile(st->fileId);
-    if (!r.transportOk) { errorOut = "offline"; online_ = false; return false; }
+    if (!r.transportOk) {
+        errorOut = "offline";
+        online_ = false;
+        return false;
+    }
     online_ = true;
     if (r.status == 200 || r.status == 404) {
         db_.removeFile(relPath);
@@ -542,10 +632,16 @@ bool SyncEngine::handleConflict(const std::string& relPath, const std::wstring& 
     // Fetch the server's ciphertext, decrypt, and three-way merge against
     // the base we both started from (last synced local content).
     std::string fileId = serverCurrent.value("file_id", "");
-    if (fileId.empty()) { errorOut = "conflict without file id"; return false; }
+    if (fileId.empty()) {
+        errorOut = "conflict without file id";
+        return false;
+    }
 
     ApiResponse full = api_->getFile(fileId);
-    if (full.status != 200) { errorOut = "cannot fetch remote version"; return false; }
+    if (full.status != 200) {
+        errorOut = "cannot fetch remote version";
+        return false;
+    }
 
     Bytes encRemote;
     if (!Crypto::base64UrlDecode(full.body.value("encrypted_content", ""), encRemote)) {
@@ -581,12 +677,13 @@ bool SyncEngine::handleConflict(const std::string& relPath, const std::wstring& 
             return false;
         }
         backupReplaced(absPath);
-        if (onRemoteFileApplied) onRemoteFileApplied(absPath);
+        if (onRemoteFileApplied)
+            onRemoteFileApplied(absPath);
         int64_t newBase = serverCurrent.value("version", (int64_t)0);
-        VersionVector vv = VersionVector::fromJson(
-            serverCurrent.value("version_vector", json::object()).dump());
-        json payload = buildFilePayload(relPath, absPath,
-            Bytes(merged.merged.begin(), merged.merged.end()), newBase, vv);
+        VersionVector vv =
+            VersionVector::fromJson(serverCurrent.value("version_vector", json::object()).dump());
+        json payload = buildFilePayload(relPath, absPath, Bytes(merged.merged.begin(), merged.merged.end()),
+                                        newBase, vv);
         ApiResponse r = api_->updateFile(fileId, payload);
         if (r.status == 200) {
             auto st = db_.getFile(relPath);
@@ -606,8 +703,8 @@ bool SyncEngine::handleConflict(const std::string& relPath, const std::wstring& 
 
     // Not auto-mergeable: preserve local content in a conflict copy and
     // record the conflict for the UI. Nothing is discarded.
-    std::wstring conflictCopy = absPath + L" (conflict - " +
-        PathUtil::utf8ToWide(settings_->deviceName) + L").bak";
+    std::wstring conflictCopy =
+        absPath + L" (conflict - " + PathUtil::utf8ToWide(settings_->deviceName) + L").bak";
     Bytes localBytes(localText.begin(), localText.end());
     writeFileAtomic(conflictCopy, localBytes);
 
@@ -626,24 +723,40 @@ bool SyncEngine::resolveConflict(const std::string& fileId, const std::string& s
                                  std::string& errorOut) {
     auto conflicts = db_.conflicts();
     const ConflictState* target = nullptr;
-    for (auto& c : conflicts) if (c.fileId == fileId) { target = &c; break; }
-    if (!target) { errorOut = "conflict not found"; return false; }
+    for (auto& c : conflicts)
+        if (c.fileId == fileId) {
+            target = &c;
+            break;
+        }
+    if (!target) {
+        errorOut = "conflict not found";
+        return false;
+    }
 
     auto absOpt = absPathForRel(target->relPath);
-    if (!absOpt) { errorOut = "cannot map path"; return false; }
+    if (!absOpt) {
+        errorOut = "cannot map path";
+        return false;
+    }
     std::wstring abs = *absOpt;
 
     if (strategy == "keepLocal") {
         // Upload the preserved local copy as the new head over remoteVersion.
         std::wstring localCopy = PathUtil::utf8ToWide(target->localCopyPath);
         Bytes data;
-        if (!readFileBytes(localCopy, data)) { errorOut = "local copy missing"; return false; }
+        if (!readFileBytes(localCopy, data)) {
+            errorOut = "local copy missing";
+            return false;
+        }
         writeFileAtomic(abs, data);
         auto st = db_.getFile(target->relPath);
         VersionVector vv = st ? st->versionVector : VersionVector{};
         json payload = buildFilePayload(target->relPath, abs, data, target->remoteVersion, vv);
         ApiResponse r = api_->updateFile(fileId, payload);
-        if (r.status != 200) { errorOut = r.body.value("message", "upload failed"); return false; }
+        if (r.status != 200) {
+            errorOut = r.body.value("message", "upload failed");
+            return false;
+        }
         if (st) {
             LocalFileState f = *st;
             f.localHash = Crypto::sha256Hex(data);
@@ -652,9 +765,13 @@ bool SyncEngine::resolveConflict(const std::string& fileId, const std::string& s
             db_.upsertFile(f);
             writeShadow(target->relPath, data);
         }
-    } else if (strategy == "keepRemote") {
+    }
+    else if (strategy == "keepRemote") {
         ApiResponse full = api_->getFile(fileId);
-        if (full.status != 200) { errorOut = "cannot fetch remote"; return false; }
+        if (full.status != 200) {
+            errorOut = "cannot fetch remote";
+            return false;
+        }
         Bytes enc, plain;
         if (!Crypto::base64UrlDecode(full.body.value("encrypted_content", ""), enc) ||
             !Crypto::decrypt(masterKey_, enc, "file", plain)) {
@@ -662,24 +779,32 @@ bool SyncEngine::resolveConflict(const std::string& fileId, const std::string& s
             return false;
         }
         backupReplaced(abs);
-        if (!writeFileAtomic(abs, plain)) { errorOut = "write failed"; return false; }
-        if (onRemoteFileApplied) onRemoteFileApplied(abs);
+        if (!writeFileAtomic(abs, plain)) {
+            errorOut = "write failed";
+            return false;
+        }
+        if (onRemoteFileApplied)
+            onRemoteFileApplied(abs);
         auto st = db_.getFile(target->relPath);
         if (st) {
             LocalFileState f = *st;
             f.localHash = Crypto::sha256Hex(plain);
             f.remoteHash = f.localHash;
             f.remoteVersion = full.body.value("version", target->remoteVersion);
-            f.versionVector = VersionVector::fromJson(
-                full.body.value("version_vector", json::object()).dump());
+            f.versionVector =
+                VersionVector::fromJson(full.body.value("version_vector", json::object()).dump());
             db_.upsertFile(f);
             writeShadow(target->relPath, plain);
         }
-    } else if (strategy == "keepBoth") {
+    }
+    else if (strategy == "keepBoth") {
         // Rename the conflict copy next to the original with a dated suffix,
         // then apply remote to the canonical path.
         ApiResponse full = api_->getFile(fileId);
-        if (full.status != 200) { errorOut = "cannot fetch remote"; return false; }
+        if (full.status != 200) {
+            errorOut = "cannot fetch remote";
+            return false;
+        }
         Bytes enc, plain;
         if (!Crypto::base64UrlDecode(full.body.value("encrypted_content", ""), enc) ||
             !Crypto::decrypt(masterKey_, enc, "file", plain)) {
@@ -694,15 +819,22 @@ bool SyncEngine::resolveConflict(const std::string& fileId, const std::string& s
         std::wstring dir = dirOf(abs), name = fileNameOf(abs);
         std::wstring stem = name, ext;
         size_t dot = name.find_last_of(L'.');
-        if (dot != std::wstring::npos) { stem = name.substr(0, dot); ext = name.substr(dot); }
+        if (dot != std::wstring::npos) {
+            stem = name.substr(0, dot);
+            ext = name.substr(dot);
+        }
         std::wstring bothName = dir + L"\\" + stem + L" (conflict - " +
-            PathUtil::utf8ToWide(settings_->deviceName) + L" - " +
-            PathUtil::utf8ToWide(date) + L")" + ext;
+                                PathUtil::utf8ToWide(settings_->deviceName) + L" - " +
+                                PathUtil::utf8ToWide(date) + L")" + ext;
         std::wstring localCopy = PathUtil::utf8ToWide(target->localCopyPath);
         MoveFileExW(localCopy.c_str(), bothName.c_str(), MOVEFILE_REPLACE_EXISTING);
         backupReplaced(abs);
-        if (!writeFileAtomic(abs, plain)) { errorOut = "write failed"; return false; }
-        if (onRemoteFileApplied) onRemoteFileApplied(abs);
+        if (!writeFileAtomic(abs, plain)) {
+            errorOut = "write failed";
+            return false;
+        }
+        if (onRemoteFileApplied)
+            onRemoteFileApplied(abs);
         auto st = db_.getFile(target->relPath);
         if (st) {
             LocalFileState f = *st;
@@ -712,7 +844,8 @@ bool SyncEngine::resolveConflict(const std::string& fileId, const std::string& s
             db_.upsertFile(f);
             writeShadow(target->relPath, plain);
         }
-    } else {
+    }
+    else {
         errorOut = "unknown strategy";
         return false;
     }
@@ -725,28 +858,43 @@ bool SyncEngine::resolveConflict(const std::string& fileId, const std::string& s
 // ---- download path ----
 
 void SyncEngine::pullChanges() {
-    if (!api_->hasTokens() || !hasMasterKey()) return;
+    if (!api_->hasTokens() || !hasMasterKey())
+        return;
     ApiResponse r = api_->changesSince(db_.lastChangeSeq());
-    if (!r.transportOk) { online_ = false; setStatus(SyncStatus::Offline, "Offline"); return; }
+    if (!r.transportOk) {
+        online_ = false;
+        setStatus(SyncStatus::Offline, "Offline");
+        return;
+    }
     online_ = true;
-    if (r.status != 200) return;
+    if (r.status != 200)
+        return;
 
     int64_t latest = r.body.value("latest_seq", (int64_t)0);
     for (auto& ch : r.body.value("changes", json::array())) {
         std::string origin = ch.value("origin_device_id", "");
-        if (origin == deviceId()) continue; // our own change
+        if (origin == deviceId())
+            continue; // our own change
         std::string fileId = ch.value("file_id", "");
         std::string err;
         applyRemoteFile(fileId, err);
     }
-    if (latest > 0) db_.setLastChangeSeq(latest);
+    if (latest > 0)
+        db_.setLastChangeSeq(latest);
 }
 
 bool SyncEngine::applyRemoteFile(const std::string& fileId, std::string& errorOut) {
     ApiResponse r = api_->getFile(fileId);
-    if (!r.transportOk) { online_ = false; errorOut = "offline"; return false; }
+    if (!r.transportOk) {
+        online_ = false;
+        errorOut = "offline";
+        return false;
+    }
     online_ = true;
-    if (r.status != 200) { errorOut = "fetch failed"; return false; }
+    if (r.status != 200) {
+        errorOut = "fetch failed";
+        return false;
+    }
 
     const json& f = r.body;
     int64_t remoteVersion = f.value("version", (int64_t)0);
@@ -760,8 +908,13 @@ bool SyncEngine::applyRemoteFile(const std::string& fileId, std::string& errorOu
         return false;
     }
     json meta;
-    try { meta = json::parse(std::string(metaPlain.begin(), metaPlain.end())); }
-    catch (...) { errorOut = "bad metadata"; return false; }
+    try {
+        meta = json::parse(std::string(metaPlain.begin(), metaPlain.end()));
+    }
+    catch (...) {
+        errorOut = "bad metadata";
+        return false;
+    }
     std::string relPath = meta.value("relative_path", "");
     std::string norm;
     if (!PathUtil::normalizeRelative(relPath, norm)) {
@@ -785,24 +938,36 @@ bool SyncEngine::applyRemoteFile(const std::string& fileId, std::string& errorOu
         // New remote file: place it in the first folder root that contains
         // the path's top-level segment, else the first root.
         auto roots = db_.listSyncRoots();
-        if (roots.empty()) { errorOut = "no sync roots"; return false; }
+        if (roots.empty()) {
+            errorOut = "no sync roots";
+            return false;
+        }
         std::string top = norm.substr(0, norm.find('/'));
         std::string chosen;
         for (auto& [id, root] : roots) {
             std::wstring candidate;
-            if (PathUtil::joinInsideRoot(root, norm, candidate)) { chosen = id; break; }
+            if (PathUtil::joinInsideRoot(root, norm, candidate)) {
+                chosen = id;
+                break;
+            }
         }
-        if (chosen.empty()) chosen = roots.front().first;
+        if (chosen.empty())
+            chosen = roots.front().first;
         localKey = chosen + ":" + norm;
     }
 
     auto absOpt = absPathForRel(localKey);
-    if (!absOpt) { errorOut = "path mapping failed"; return false; }
+    if (!absOpt) {
+        errorOut = "path mapping failed";
+        return false;
+    }
     std::wstring abs = *absOpt;
-    if (ignored(norm, false)) return true;
+    if (ignored(norm, false))
+        return true;
 
     auto st = db_.getFile(localKey);
-    if (st && st->remoteVersion >= remoteVersion) return true; // already current
+    if (st && st->remoteVersion >= remoteVersion)
+        return true; // already current
 
     if (deleted) {
         backupReplaced(abs);
@@ -860,9 +1025,14 @@ bool SyncEngine::applyRemoteFile(const std::string& fileId, std::string& errorOu
         }
     }
     CreateDirectoryW(dir.c_str(), nullptr);
-    if (GetFileAttributesW(abs.c_str()) != INVALID_FILE_ATTRIBUTES) backupReplaced(abs);
-    if (!writeFileAtomic(abs, plain)) { errorOut = "write failed"; return false; }
-    if (onRemoteFileApplied) onRemoteFileApplied(abs);
+    if (GetFileAttributesW(abs.c_str()) != INVALID_FILE_ATTRIBUTES)
+        backupReplaced(abs);
+    if (!writeFileAtomic(abs, plain)) {
+        errorOut = "write failed";
+        return false;
+    }
+    if (onRemoteFileApplied)
+        onRemoteFileApplied(abs);
 
     LocalFileState nf = st.value_or(LocalFileState{});
     nf.relPath = localKey;
@@ -880,18 +1050,22 @@ bool SyncEngine::applyRemoteFile(const std::string& fileId, std::string& errorOu
 // ---- Notepad++ hooks ----
 
 void SyncEngine::onFileSaved(const std::wstring& absPath) {
-    if (settings_->pauseSync || !isSignedIn()) return;
+    if (settings_->pauseSync || !isSignedIn())
+        return;
     auto loc = locateInRoots(absPath);
-    if (!loc) return;
+    if (!loc)
+        return;
     // enqueueOp coalesces rapid successive saves of the same file, and the
     // upload path no-ops when content is unchanged — so just queue it.
     queueUpload(loc->first, absPath);
 }
 
 void SyncEngine::onFileOpened(const std::wstring& absPath) {
-    if (!isSignedIn()) return;
+    if (!isSignedIn())
+        return;
     auto loc = locateInRoots(absPath);
-    if (!loc) return;
+    if (!loc)
+        return;
     // Ensure metadata exists so future saves diff correctly.
     auto st = db_.getFile(loc->first);
     if (!st) {
@@ -905,7 +1079,8 @@ void SyncEngine::onFileOpened(const std::wstring& absPath) {
 // ---- fs events ----
 
 void SyncEngine::onFsEvent(const FsEvent& ev) {
-    if (settings_->pauseSync || !isSignedIn()) return;
+    if (settings_->pauseSync || !isSignedIn())
+        return;
     auto loc = locateInRoots(ev.absPath);
     if (!loc) {
         // Possibly a rename from a known path.
@@ -924,7 +1099,8 @@ void SyncEngine::onFsEvent(const FsEvent& ev) {
     case FsEvent::Kind::Created:
     case FsEvent::Kind::Modified: {
         DWORD attr = GetFileAttributesW(ev.absPath.c_str());
-        if (attr != INVALID_FILE_ATTRIBUTES && (attr & FILE_ATTRIBUTE_DIRECTORY)) return;
+        if (attr != INVALID_FILE_ATTRIBUTES && (attr & FILE_ATTRIBUTE_DIRECTORY))
+            return;
         queueUpload(loc->first, ev.absPath);
         break;
     }
@@ -950,16 +1126,21 @@ void SyncEngine::onWsEvent(const json& ev) {
     std::string type = ev.value("type", "");
     if (type == "file_changed" || type == "file_deleted") {
         std::string origin = ev.value("origin_device_id", "");
-        if (origin == deviceId()) return;
+        if (origin == deviceId())
+            return;
         std::string fileId = ev.value("file_id", "");
         if (!fileId.empty()) {
             std::string err;
-            if (!applyRemoteFile(fileId, err)) pullChanges(); // fallback to feed
+            if (!applyRemoteFile(fileId, err))
+                pullChanges(); // fallback to feed
             setStatus(SyncStatus::Synced, "Updated");
         }
-    } else if (type == "device_revoked") {
-        if (ev.value("device_id", "") == deviceId()) signOut();
-    } else if (type == "session_changed") {
+    }
+    else if (type == "device_revoked") {
+        if (ev.value("device_id", "") == deviceId())
+            signOut();
+    }
+    else if (type == "session_changed") {
         // Session sync handled by the session feature (optional).
     }
 }
@@ -970,18 +1151,33 @@ bool SyncEngine::processPendingOp(const PendingOp& op) {
     std::string err;
     if (op.kind == "upload") {
         auto abs = absPathForRel(op.relPath);
-        if (!abs) { db_.removeOp(op.id); return true; }
-        if (uploadFile(op.relPath, *abs, err)) { db_.removeOp(op.id); return true; }
-    } else if (op.kind == "delete") {
-        if (deleteRemote(op.relPath, err)) { db_.removeOp(op.id); return true; }
-    } else {
+        if (!abs) {
+            db_.removeOp(op.id);
+            return true;
+        }
+        if (uploadFile(op.relPath, *abs, err)) {
+            db_.removeOp(op.id);
+            return true;
+        }
+    }
+    else if (op.kind == "delete") {
+        if (deleteRemote(op.relPath, err)) {
+            db_.removeOp(op.id);
+            return true;
+        }
+    }
+    else {
         db_.removeOp(op.id);
         return true;
     }
-    if (err == "offline") { online_ = false; return false; }
+    if (err == "offline") {
+        online_ = false;
+        return false;
+    }
     db_.markOpFailed(op.id, err);
     // Drop poison ops after many retries (never silently: they're in logs).
-    if (op.retryCount > 25) db_.removeOp(op.id);
+    if (op.retryCount > 25)
+        db_.removeOp(op.id);
     return false;
 }
 
@@ -990,8 +1186,10 @@ void SyncEngine::workerLoop() {
         if (!settings_->pauseSync && isSignedIn() && hasMasterKey()) {
             bool didWork = false;
             for (auto& op : db_.pendingOps()) {
-                if (!running_) break;
-                if (!online_) break;
+                if (!running_)
+                    break;
+                if (!online_)
+                    break;
                 didWork = true;
                 setStatus(SyncStatus::Syncing, "Syncing");
                 processPendingOp(op);
@@ -1002,7 +1200,8 @@ void SyncEngine::workerLoop() {
             else if (db_.conflictCount() > 0)
                 setStatus(SyncStatus::Conflict, "Conflict needs attention");
         }
-        for (int i = 0; i < 10 && running_; ++i) Sleep(500); // 5s cadence
+        for (int i = 0; i < 10 && running_; ++i)
+            Sleep(500); // 5s cadence
     }
 }
 
@@ -1012,39 +1211,50 @@ void SyncEngine::pollerLoop() {
             pullChanges();
             if (online_ && db_.conflictCount() == 0) {
                 // Only downgrade to Synced if nothing is in flight.
-                if (db_.pendingOpCount() == 0) setStatus(SyncStatus::Synced, "Synced");
+                if (db_.pendingOpCount() == 0)
+                    setStatus(SyncStatus::Synced, "Synced");
             }
         }
         int interval = (std::max)(5, settings_->syncIntervalFallbackSec);
-        for (int i = 0; i < interval * 2 && running_; ++i) Sleep(500);
+        for (int i = 0; i < interval * 2 && running_; ++i)
+            Sleep(500);
     }
 }
 
 void SyncEngine::scannerLoop() {
     // Initial delay, then scan roots every 10 minutes as a safety net for
     // missed watcher events (buffer overflow, network shares, etc.).
-    for (int i = 0; i < 30 && running_; ++i) Sleep(1000);
+    for (int i = 0; i < 30 && running_; ++i)
+        Sleep(1000);
     while (running_) {
         if (!settings_->pauseSync && isSignedIn() && hasMasterKey()) {
             for (auto& [id, root] : db_.listSyncRoots()) {
-                if (!running_) break;
+                if (!running_)
+                    break;
                 std::vector<std::wstring> stack{root};
                 while (!stack.empty() && running_) {
                     std::wstring dir = stack.back();
                     stack.pop_back();
                     WIN32_FIND_DATAW fd{};
                     HANDLE h = FindFirstFileW((dir + L"\\*").c_str(), &fd);
-                    if (h == INVALID_HANDLE_VALUE) continue;
+                    if (h == INVALID_HANDLE_VALUE)
+                        continue;
                     do {
                         std::wstring name = fd.cFileName;
-                        if (name == L"." || name == L"..") continue;
+                        if (name == L"." || name == L"..")
+                            continue;
                         std::wstring full = dir + L"\\" + name;
                         bool isDir = (fd.dwFileAttributes & FILE_ATTRIBUTE_DIRECTORY) != 0;
-                        if (isDir) { stack.push_back(full); continue; }
+                        if (isDir) {
+                            stack.push_back(full);
+                            continue;
+                        }
                         auto loc = locateInRoots(full);
-                        if (!loc) continue;
+                        if (!loc)
+                            continue;
                         std::string norm = loc->first.substr(loc->first.find(':') + 1);
-                        if (ignored(norm, false)) continue;
+                        if (ignored(norm, false))
+                            continue;
                         auto st = db_.getFile(loc->first);
                         if (!st) {
                             queueUpload(loc->first, full); // new file
@@ -1054,7 +1264,8 @@ void SyncEngine::scannerLoop() {
                 }
             }
         }
-        for (int i = 0; i < 600 * 2 && running_; ++i) Sleep(500); // 10 min
+        for (int i = 0; i < 600 * 2 && running_; ++i)
+            Sleep(500); // 10 min
     }
 }
 

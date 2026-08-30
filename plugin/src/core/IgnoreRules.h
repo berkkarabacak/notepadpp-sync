@@ -13,10 +13,11 @@
 #include <string>
 #include <vector>
 
-namespace npsync {
+namespace npsync
+{
 
 class IgnoreRules {
-public:
+  public:
     // Parse rules from text (one pattern per line).
     static IgnoreRules parse(const std::string& text);
 
@@ -24,10 +25,13 @@ public:
     // isDir tells whether the path is a directory (affects "dir/" rules).
     bool ignored(const std::string& relPath, bool isDir) const;
 
-    bool empty() const { return rules_.empty(); }
+    bool empty() const {
+        return rules_.empty();
+    }
 
-private:
-    struct Rule {
+  private:
+    struct Rule
+    {
         std::string pattern;
         bool negate = false;
         bool dirOnly = false;

@@ -27,9 +27,11 @@
 #include "core/Crypto.h"
 #include "core/IgnoreRules.h"
 
-namespace npsync {
+namespace npsync
+{
 
-enum class SyncStatus {
+enum class SyncStatus
+{
     SignedOut,
     Synced,
     Syncing,
@@ -39,7 +41,8 @@ enum class SyncStatus {
     Error,
 };
 
-struct StatusInfo {
+struct StatusInfo
+{
     SyncStatus status = SyncStatus::SignedOut;
     std::string statusText = "Signed out";
     std::string lastSyncTime;
@@ -50,7 +53,7 @@ struct StatusInfo {
 };
 
 class SyncEngine {
-public:
+  public:
     SyncEngine();
     ~SyncEngine();
 
@@ -67,9 +70,9 @@ public:
 
     // Key management.
     bool hasMasterKey() const;
-    bool generateMasterKeyIfNeeded();          // first-run setup
+    bool generateMasterKeyIfNeeded(); // first-run setup
     bool unlockWithRecoveryKey(const std::string& recoveryKey);
-    std::string exportRecoveryKeyWrapped();    // for showing once to the user
+    std::string exportRecoveryKeyWrapped(); // for showing once to the user
     bool pairNewDevice(std::string& codeOut, std::string& errorOut);
     bool approvePairing(const std::string& code, std::string& errorOut);
     // Poll once for approval of a previously requested code; on approval the
@@ -82,26 +85,29 @@ public:
 
     // Conflict resolution ("keepLocal" uploads local as new head;
     // "keepRemote" downloads remote; "keepBoth" writes a conflict copy).
-    bool resolveConflict(const std::string& fileId, const std::string& strategy,
-                         std::string& errorOut);
+    bool resolveConflict(const std::string& fileId, const std::string& strategy, std::string& errorOut);
 
     // Status & events.
     StatusInfo status();
-    std::function<void()> onStatusChanged;    // UI refresh (marshalled by caller)
+    std::function<void()> onStatusChanged;                                // UI refresh (marshalled by caller)
     std::function<void(const std::wstring& absPath)> onRemoteFileApplied; // UI: reload buffer if open
 
     // Notepad++ notifications.
     void onFileSaved(const std::wstring& absPath);
     void onFileOpened(const std::wstring& absPath);
 
-    Settings* settings() { return settings_; }
-    LocalDb* db() { return &db_; }
+    Settings* settings() {
+        return settings_;
+    }
+    LocalDb* db() {
+        return &db_;
+    }
 
-private:
+  private:
     // Worker threads.
-    void workerLoop();        // pending ops + uploads
-    void pollerLoop();        // periodic /sync/changes catch-up
-    void scannerLoop();       // periodic full scan of sync roots
+    void workerLoop();  // pending ops + uploads
+    void pollerLoop();  // periodic /sync/changes catch-up
+    void scannerLoop(); // periodic full scan of sync roots
 
     // Core operations.
     void queueUpload(const std::string& relPath, const std::wstring& absPath);
@@ -125,8 +131,7 @@ private:
     void writeShadow(const std::string& relKey, const Bytes& content);
     bool readShadow(const std::string& relKey, Bytes& out);
     nlohmann::json buildFilePayload(const std::string& relPath, const std::wstring& absPath,
-                                    const Bytes& plaintext, int64_t baseVersion,
-                                    const VersionVector& vv);
+                                    const Bytes& plaintext, int64_t baseVersion, const VersionVector& vv);
     bool refreshIgnoreRules();
     void setStatus(SyncStatus s, const std::string& text);
     void onFsEvent(const FsEvent& ev);

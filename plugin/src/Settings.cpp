@@ -7,8 +7,8 @@
 #ifndef WIN32_LEAN_AND_MEAN
 #define WIN32_LEAN_AND_MEAN
 #endif
-#include <windows.h>
 #include <wincrypt.h>
+#include <windows.h>
 
 #include <nlohmann/json.hpp>
 
@@ -16,13 +16,16 @@
 
 using nlohmann::json;
 
-namespace npsync {
+namespace npsync
+{
 
 SettingsStore::SettingsStore(std::wstring appDataDir) : dir_(std::move(appDataDir)) {
     CreateDirectoryW(dir_.c_str(), nullptr);
 }
 
-std::wstring SettingsStore::settingsPath() const { return dir_ + L"\\settings.json"; }
+std::wstring SettingsStore::settingsPath() const {
+    return dir_ + L"\\settings.json";
+}
 
 std::wstring SettingsStore::secretPath(const std::wstring& name) const {
     return dir_ + L"\\secrets\\" + name + L".bin";
@@ -30,11 +33,13 @@ std::wstring SettingsStore::secretPath(const std::wstring& name) const {
 
 bool SettingsStore::load(Settings& s) {
     std::ifstream f(settingsPath(), std::ios::binary);
-    if (!f) return false;
+    if (!f)
+        return false;
     json j;
     try {
         f >> j;
-    } catch (...) {
+    }
+    catch (...) {
         return false;
     }
     s.startSyncAutomatically = j.value("start_sync_automatically", true);
@@ -83,10 +88,12 @@ bool SettingsStore::save(const Settings& s) {
     j["database_location"] = PathUtil::wideToUtf8(s.databaseLocation);
 
     json roots = json::array();
-    for (auto& r : s.syncRoots) roots.push_back(PathUtil::wideToUtf8(r));
+    for (auto& r : s.syncRoots)
+        roots.push_back(PathUtil::wideToUtf8(r));
     j["sync_roots"] = roots;
     json files = json::array();
-    for (auto& r : s.syncFiles) files.push_back(PathUtil::wideToUtf8(r));
+    for (auto& r : s.syncFiles)
+        files.push_back(PathUtil::wideToUtf8(r));
     j["sync_files"] = files;
     j["ignore_patterns"] = s.extraIgnorePatterns;
 
@@ -94,7 +101,8 @@ bool SettingsStore::save(const Settings& s) {
     std::wstring tmp = settingsPath() + L".tmp";
     {
         std::ofstream f(tmp, std::ios::binary | std::ios::trunc);
-        if (!f) return false;
+        if (!f)
+            return false;
         f << j.dump(2);
     }
     return MoveFileExW(tmp.c_str(), settingsPath().c_str(),
@@ -103,8 +111,7 @@ bool SettingsStore::save(const Settings& s) {
 
 bool SettingsStore::saveSecret(const std::wstring& name, const std::string& value) {
     CreateDirectoryW((dir_ + L"\\secrets").c_str(), nullptr);
-    DATA_BLOB in{static_cast<DWORD>(value.size()),
-                 reinterpret_cast<BYTE*>(const_cast<char*>(value.data()))};
+    DATA_BLOB in{static_cast<DWORD>(value.size()), reinterpret_cast<BYTE*>(const_cast<char*>(value.data()))};
     DATA_BLOB out{};
     // DPAPI current-user protection: only this Windows user can decrypt.
     if (!CryptProtectData(&in, L"NPSync", nullptr, nullptr, nullptr, 0, &out))
@@ -120,18 +127,19 @@ bool SettingsStore::saveSecret(const std::wstring& name, const std::string& valu
         }
     }
     LocalFree(out.pbData);
-    if (!ok) return false;
-    return MoveFileExW(tmp.c_str(), path.c_str(),
-                       MOVEFILE_REPLACE_EXISTING | MOVEFILE_WRITE_THROUGH) != 0;
+    if (!ok)
+        return false;
+    return MoveFileExW(tmp.c_str(), path.c_str(), MOVEFILE_REPLACE_EXISTING | MOVEFILE_WRITE_THROUGH) != 0;
 }
 
 bool SettingsStore::loadSecret(const std::wstring& name, std::string& valueOut) {
     std::ifstream f(secretPath(name), std::ios::binary);
-    if (!f) return false;
+    if (!f)
+        return false;
     std::string enc((std::istreambuf_iterator<char>(f)), std::istreambuf_iterator<char>());
-    if (enc.empty()) return false;
-    DATA_BLOB in{static_cast<DWORD>(enc.size()),
-                 reinterpret_cast<BYTE*>(enc.data())};
+    if (enc.empty())
+        return false;
+    DATA_BLOB in{static_cast<DWORD>(enc.size()), reinterpret_cast<BYTE*>(enc.data())};
     DATA_BLOB out{};
     if (!CryptUnprotectData(&in, nullptr, nullptr, nullptr, nullptr, 0, &out))
         return false;
@@ -141,8 +149,7 @@ bool SettingsStore::loadSecret(const std::wstring& name, std::string& valueOut) 
 }
 
 bool SettingsStore::deleteSecret(const std::wstring& name) {
-    return DeleteFileW(secretPath(name).c_str()) != 0 ||
-           GetLastError() == ERROR_FILE_NOT_FOUND;
+    return DeleteFileW(secretPath(name).c_str()) != 0 || GetLastError() == ERROR_FILE_NOT_FOUND;
 }
 
 } // namespace npsync

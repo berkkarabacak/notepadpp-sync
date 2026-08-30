@@ -5,22 +5,37 @@
 #include <mutex>
 #include <string>
 
-namespace npsync {
+namespace npsync
+{
 
-enum class LogLevel { Error = 0, Warning = 1, Info = 2, Debug = 3 };
+enum class LogLevel
+{
+    Error = 0,
+    Warning = 1,
+    Info = 2,
+    Debug = 3
+};
 
 class Logger {
-public:
+  public:
     static void init(const std::wstring& logDir, LogLevel level);
     static void setLevel(LogLevel level);
     static void log(LogLevel level, const std::string& msg);
 
-    static void error(const std::string& msg) { log(LogLevel::Error, msg); }
-    static void warn(const std::string& msg)  { log(LogLevel::Warning, msg); }
-    static void info(const std::string& msg)  { log(LogLevel::Info, msg); }
-    static void debug(const std::string& msg) { log(LogLevel::Debug, msg); }
+    static void error(const std::string& msg) {
+        log(LogLevel::Error, msg);
+    }
+    static void warn(const std::string& msg) {
+        log(LogLevel::Warning, msg);
+    }
+    static void info(const std::string& msg) {
+        log(LogLevel::Info, msg);
+    }
+    static void debug(const std::string& msg) {
+        log(LogLevel::Debug, msg);
+    }
 
-private:
+  private:
     static std::wstring dir_;
     static LogLevel level_;
     static std::mutex mu_;

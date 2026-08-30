@@ -15,9 +15,11 @@
 
 struct sqlite3;
 
-namespace npsync {
+namespace npsync
+{
 
-struct LocalFileState {
+struct LocalFileState
+{
     std::string fileId;          // empty until the server knows the file
     std::string syncRoot;        // root ID this file belongs to
     std::string relPath;         // normalized, forward slashes
@@ -29,9 +31,10 @@ struct LocalFileState {
     int64_t modifiedAtLocal = 0; // file mtime (informational only)
 };
 
-struct PendingOp {
+struct PendingOp
+{
     int64_t id = 0;
-    std::string kind;    // "upload" | "delete" | "rename"
+    std::string kind; // "upload" | "delete" | "rename"
     std::string relPath;
     std::string newRelPath; // for rename
     int64_t queuedAt = 0;
@@ -39,7 +42,8 @@ struct PendingOp {
     std::string lastError;
 };
 
-struct ConflictState {
+struct ConflictState
+{
     std::string fileId;
     std::string relPath;
     int64_t remoteVersion = 0;
@@ -49,13 +53,15 @@ struct ConflictState {
 };
 
 class LocalDb {
-public:
+  public:
     LocalDb() = default;
     ~LocalDb();
 
     bool open(const std::wstring& path);
     void close();
-    bool isOpen() const { return db_ != nullptr; }
+    bool isOpen() const {
+        return db_ != nullptr;
+    }
 
     // ---- account / device ----
     bool setMeta(const std::string& key, const std::string& value);
@@ -72,10 +78,9 @@ public:
     std::optional<LocalFileState> getFile(const std::string& relPath);
     std::vector<LocalFileState> allFiles();
     bool removeFile(const std::string& relPath);
-    bool updateRemoteState(const std::string& relPath, const std::string& remoteHash,
-                           int64_t remoteVersion, const VersionVector& vv);
-    bool updateLocalHash(const std::string& relPath, const std::string& localHash,
-                         int64_t mtime);
+    bool updateRemoteState(const std::string& relPath, const std::string& remoteHash, int64_t remoteVersion,
+                           const VersionVector& vv);
+    bool updateLocalHash(const std::string& relPath, const std::string& localHash, int64_t mtime);
 
     // ---- pending ops (offline queue) ----
     bool enqueueOp(const PendingOp& op);
@@ -94,7 +99,7 @@ public:
     bool setLastChangeSeq(int64_t seq);
     int64_t lastChangeSeq();
 
-private:
+  private:
     sqlite3* db_ = nullptr;
     bool exec(const char* sql);
     bool migrate();

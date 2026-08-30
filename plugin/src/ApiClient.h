@@ -9,25 +9,31 @@
 
 #include <nlohmann/json.hpp>
 
-namespace npsync {
+namespace npsync
+{
 
-struct ApiResponse {
+struct ApiResponse
+{
     long status = 0;
-    nlohmann::json body;         // empty json if body wasn't JSON
+    nlohmann::json body; // empty json if body wasn't JSON
     std::string rawBody;
-    int serverProtocol = 0;      // from X-NPSync-Protocol response header
-    bool transportOk = false;    // false: DNS/TCP/TLS failure (offline)
+    int serverProtocol = 0;   // from X-NPSync-Protocol response header
+    bool transportOk = false; // false: DNS/TCP/TLS failure (offline)
     std::string transportError;
 };
 
 class ApiClient {
-public:
+  public:
     ApiClient(std::string baseUrl, std::string deviceId);
 
     void setTokens(const std::string& access, const std::string& refresh);
     void clearTokens();
-    bool hasTokens() const { return !refreshToken_.empty(); }
-    const std::string& accessToken() const { return accessToken_; }
+    bool hasTokens() const {
+        return !refreshToken_.empty();
+    }
+    const std::string& accessToken() const {
+        return accessToken_;
+    }
 
     // Callback fired when tokens rotate (persist them via SettingsStore).
     std::function<void(const std::string& access, const std::string& refresh)> onTokensRotated;
@@ -35,8 +41,7 @@ public:
     // ---- auth ----
     ApiResponse registerAccount(const std::string& email, const std::string& password,
                                 const std::string& deviceName);
-    ApiResponse login(const std::string& email, const std::string& password,
-                      const std::string& deviceName);
+    ApiResponse login(const std::string& email, const std::string& password, const std::string& deviceName);
     ApiResponse logout();
 
     // ---- devices ----
@@ -63,14 +68,14 @@ public:
 
     bool refreshAccessToken();
 
-private:
+  private:
     std::string baseUrl_;
     std::string deviceId_;
     std::string accessToken_;
     std::string refreshToken_;
 
-    ApiResponse request(const std::string& method, const std::string& path,
-                        const nlohmann::json* body, bool authed, bool retryOn401 = true);
+    ApiResponse request(const std::string& method, const std::string& path, const nlohmann::json* body,
+                        bool authed, bool retryOn401 = true);
 };
 
 // ---- WebSocket ----
@@ -79,7 +84,7 @@ private:
 // onEvent(json) for each change event and onStateChange(connected) on
 // connect/disconnect. Reconnects with backoff while running.
 class WsClient {
-public:
+  public:
     using EventCallback = std::function<void(const nlohmann::json& ev)>;
     using StateCallback = std::function<void(bool connected)>;
 
@@ -89,7 +94,7 @@ public:
     void start(std::function<std::string()> accessTokenProvider);
     void stop();
 
-private:
+  private:
     void run();
 
     std::string baseUrl_;

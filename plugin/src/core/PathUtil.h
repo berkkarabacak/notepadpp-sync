@@ -7,10 +7,11 @@
 
 #include <string>
 
-namespace npsync {
+namespace npsync
+{
 
 class PathUtil {
-public:
+  public:
     // Normalize a sync-relative path: forward slashes, collapsed separators,
     // resolved "." / ".." (clamped at root), no drive letters or leading
     // slashes. Returns false if the path is fundamentally invalid.

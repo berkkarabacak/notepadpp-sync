@@ -6,13 +6,15 @@
 
 #include <string>
 
-namespace npsync {
+namespace npsync
+{
 
 constexpr int kMenuCount = 10;
 extern const wchar_t kPluginName[];
 
 // Menu command indices.
-enum MenuCmd {
+enum MenuCmd
+{
     CmdSignIn = 0,
     CmdSignOut,
     CmdSyncNow,

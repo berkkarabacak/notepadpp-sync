@@ -14,16 +14,25 @@
 #include <thread>
 #include <vector>
 
-namespace npsync {
+namespace npsync
+{
 
-struct FsEvent {
-    enum class Kind { Created, Modified, Deleted, RenamedFrom, RenamedTo } kind;
+struct FsEvent
+{
+    enum class Kind
+    {
+        Created,
+        Modified,
+        Deleted,
+        RenamedFrom,
+        RenamedTo
+    } kind;
     std::wstring absPath;
     std::wstring oldAbsPath; // for rename pairs
 };
 
 class FolderWatcher {
-public:
+  public:
     using Callback = std::function<void(const FsEvent&)>;
 
     FolderWatcher() = default;
@@ -35,9 +44,11 @@ public:
 
     void start(Callback cb);
     void stop();
-    bool running() const { return running_; }
+    bool running() const {
+        return running_;
+    }
 
-private:
+  private:
     void pump(std::wstring dir, HANDLE dirHandle, Callback cb);
 
     std::vector<std::wstring> roots_;

@@ -9,25 +9,26 @@
 #include <string>
 #include <vector>
 
-namespace npsync {
+namespace npsync
+{
 
-struct MergeHunk {
+struct MergeHunk
+{
     // A conflicting region: lines where local and remote disagree.
     std::vector<std::string> localLines;
     std::vector<std::string> remoteLines;
 };
 
-struct MergeResult {
-    bool clean = false;              // true: merged without conflict
-    std::string merged;              // valid only when clean == true
-    std::vector<MergeHunk> hunks;    // populated when clean == false
+struct MergeResult
+{
+    bool clean = false;           // true: merged without conflict
+    std::string merged;           // valid only when clean == true
+    std::vector<MergeHunk> hunks; // populated when clean == false
 };
 
 class ThreeWayMerge {
-public:
-    static MergeResult merge(const std::string& base,
-                             const std::string& local,
-                             const std::string& remote);
+  public:
+    static MergeResult merge(const std::string& base, const std::string& local, const std::string& remote);
 };
 
 // Split/join helpers (handle \n and \r\n; join uses the dominant EOL of base).

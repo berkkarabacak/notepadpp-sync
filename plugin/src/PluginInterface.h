@@ -10,26 +10,29 @@
 
 const int nbChar = 64;
 
-typedef const wchar_t* (__cdecl* PFUNCGETNAME)();
+typedef const wchar_t*(__cdecl* PFUNCGETNAME)();
 
-struct NppData {
+struct NppData
+{
     HWND _nppHandle;
     HWND _scintillaMainHandle;
     HWND _scintillaSecondHandle;
 };
 
-typedef void (__cdecl* PFUNCSETINFO)(NppData);
-typedef void (__cdecl* PFUNCPLUGINCMD)();
-typedef void (__cdecl* PBEOTIFIED)(void*);
+typedef void(__cdecl* PFUNCSETINFO)(NppData);
+typedef void(__cdecl* PFUNCPLUGINCMD)();
+typedef void(__cdecl* PBEOTIFIED)(void*);
 
-struct ShortcutKey {
+struct ShortcutKey
+{
     bool _isCtrl = false;
     bool _isAlt = false;
     bool _isShift = false;
     UCHAR _key = 0;
 };
 
-struct FuncItem {
+struct FuncItem
+{
     wchar_t _itemName[nbChar] = {0};
     PFUNCPLUGINCMD _pFunc = nullptr;
     int _cmdID = 0;
@@ -38,13 +41,15 @@ struct FuncItem {
 };
 
 // Scintilla notification header (from Scintilla.iface).
-struct Sci_NotifyHeader {
+struct Sci_NotifyHeader
+{
     HWND hwndFrom;
     uintptr_t idFrom;
     unsigned int code;
 };
 
-struct SCNotification {
+struct SCNotification
+{
     Sci_NotifyHeader nmhdr;
     intptr_t position;
     int ch;

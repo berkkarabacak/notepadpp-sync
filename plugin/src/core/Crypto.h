@@ -18,7 +18,8 @@
 #include <string>
 #include <vector>
 
-namespace npsync {
+namespace npsync
+{
 
 using Bytes = std::vector<uint8_t>;
 
@@ -28,7 +29,7 @@ constexpr size_t kGcmNonceLen = 12;
 constexpr size_t kGcmTagLen = 16;
 
 class Crypto {
-public:
+  public:
     // Generate `len` cryptographically secure random bytes (BCryptGenRandom).
     static Bytes random(size_t len);
 
@@ -64,9 +65,9 @@ public:
     static std::string generateRecoveryKey();
     static bool normalizeRecoveryKey(const std::string& in, std::string& normalizedOut);
 
-private:
-    static Bytes aesGcmCrypt(bool encrypting, const Bytes& key, const Bytes& nonce,
-                             const Bytes& input, const std::string& aad, Bytes& tagOut);
+  private:
+    static Bytes aesGcmCrypt(bool encrypting, const Bytes& key, const Bytes& nonce, const Bytes& input,
+                             const std::string& aad, Bytes& tagOut);
 };
 
 } // namespace npsync
