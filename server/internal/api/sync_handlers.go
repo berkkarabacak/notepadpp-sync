@@ -374,7 +374,7 @@ func (s *Server) handleRestoreVersion(w http.ResponseWriter, r *http.Request) {
 		AccountID: accountID(r), FileID: fileID,
 		EncryptedMetadata: v.EncryptedMetadata, ContentHash: v.ContentHash,
 		VersionVector: store.MergeVersionVector(cur.VersionVector, v.VersionVector),
-		Deleted: v.Deleted, Size: v.Size, BlobKey: v.BlobKey,
+		Deleted:       v.Deleted, Size: v.Size, BlobKey: v.BlobKey,
 		ModifiedAt: s.now(), OriginDeviceID: deviceID(r),
 	}
 	updated, err := s.st.UpdateFile(r.Context(), rec, cur.Version)
@@ -394,12 +394,12 @@ type batchRequest struct {
 }
 
 type batchResultItem struct {
-	FileID   string      `json:"file_id"`
-	OK       bool        `json:"ok"`
-	Error    string      `json:"error,omitempty"`
-	Conflict *fileJSON   `json:"conflict,omitempty"`
-	Record   *fileJSON   `json:"record,omitempty"`
-	Content  string      `json:"content,omitempty"`
+	FileID   string    `json:"file_id"`
+	OK       bool      `json:"ok"`
+	Error    string    `json:"error,omitempty"`
+	Conflict *fileJSON `json:"conflict,omitempty"`
+	Record   *fileJSON `json:"record,omitempty"`
+	Content  string    `json:"content,omitempty"`
 }
 
 func (s *Server) handleBatch(w http.ResponseWriter, r *http.Request) {

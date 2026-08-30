@@ -302,7 +302,7 @@ func TestIdempotentCreate(t *testing.T) {
 	body := fileJSON{
 		FileID: fileID, EncryptedContent: b64, ContentHash: hash,
 		EncryptedMetadata: base64.RawURLEncoding.EncodeToString([]byte("m")),
-		VersionVector: map[string]int{c.DeviceID: 1}, Size: size,
+		VersionVector:     map[string]int{c.DeviceID: 1}, Size: size,
 		ModifiedAt: time.Now().UTC(), IdempotencyKey: key,
 	}
 	r1 := c.authed("POST", "/sync/files", body)
@@ -425,7 +425,7 @@ func TestOversizedUploadRejected(t *testing.T) {
 	fileID := auth.NewUUID()
 	big := bytes.Repeat([]byte("z"), int(env.cfg.MaxFileBytes)+1)
 	body := fileJSON{
-		FileID: fileID,
+		FileID:            fileID,
 		EncryptedMetadata: base64.RawURLEncoding.EncodeToString([]byte("m")),
 		EncryptedContent:  base64.RawURLEncoding.EncodeToString(big),
 		ContentHash:       auth.HashTokenSHA256(string(big)),

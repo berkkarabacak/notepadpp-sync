@@ -26,11 +26,11 @@ func TestHashAndVerifyPassword(t *testing.T) {
 
 func TestPasswordPolicy(t *testing.T) {
 	cases := map[string]bool{
-		"short1":         false, // too short
+		"short1":          false, // too short
 		"onlylettershere": false, // no digit
-		"12345678901":    false, // no letter
-		"goodPassw0rd":   true,
-		"another-ok-123": true,
+		"12345678901":     false, // no letter
+		"goodPassw0rd":    true,
+		"another-ok-123":  true,
 	}
 	for pw, want := range cases {
 		if err := ValidatePasswordPolicy(pw); (err == nil) != want {

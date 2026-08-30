@@ -16,8 +16,8 @@ type Mem struct {
 	byEmail    map[string]string   // email -> account ID
 	devices    map[string]*Device  // by ID
 	tokens     map[string]*RefreshToken
-	tokensByH  map[string]string // hash -> token ID
-	files      map[string]*FileRecord    // accountID + "/" + fileID
+	tokensByH  map[string]string          // hash -> token ID
+	files      map[string]*FileRecord     // accountID + "/" + fileID
 	versions   map[string][]VersionRecord // accountID/fileID -> history
 	changes    []Change
 	nextSeq    int64
