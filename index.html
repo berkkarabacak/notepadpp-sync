@@ -1,0 +1,73 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Notepad++ Sync — your notes, on every laptop, no cloud</title>
+<style>
+  :root { color-scheme: light dark; }
+  * { box-sizing: border-box; }
+  body {
+    font-family: system-ui, -apple-system, "Segoe UI", sans-serif;
+    max-width: 720px; margin: 0 auto; padding: 3rem 1.25rem;
+    line-height: 1.55;
+  }
+  h1 { font-size: 1.9rem; margin-bottom: .25rem; }
+  h2 { font-size: 1.15rem; margin-top: 2rem; }
+  .tag { color: #6b7280; margin-top: 0; }
+  code, pre { background: rgba(127,127,127,.12); border-radius: 6px; }
+  code { padding: .1em .35em; }
+  pre { padding: .8rem 1rem; overflow-x: auto; }
+  a { color: #2563eb; }
+  .btn {
+    display: inline-block; padding: .55rem 1.1rem; border-radius: 8px;
+    background: #2563eb; color: #fff; text-decoration: none; margin-right: .5rem;
+  }
+  .btn.secondary { background: transparent; border: 1px solid #2563eb; color: #2563eb; }
+  ul { padding-left: 1.25rem; }
+</style>
+</head>
+<body>
+
+<h1>Notepad++ Sync</h1>
+<p class="tag">Your notes, on every laptop. No Google Drive, no OneDrive, no Dropbox.</p>
+
+<p>A native Notepad++ plugin plus a tiny self-hostable server. Install, sign
+in, pick your folders — then just use Notepad++. Save on one laptop and the
+note is already there on the other.</p>
+
+<p>
+<a class="btn" href="https://github.com/berkkarabacak/notepadpp-sync/releases">Download</a>
+<a class="btn secondary" href="https://github.com/berkkarabacak/notepadpp-sync">GitHub</a>
+</p>
+
+<h2>Why it's different</h2>
+<ul>
+  <li><strong>End-to-end encrypted.</strong> Files and filenames are encrypted on
+      your device before upload. The server stores ciphertext only.</li>
+  <li><strong>Real conflict handling.</strong> Simultaneous edits are detected and
+      merged or kept — never silently overwritten.</li>
+  <li><strong>Offline-first.</strong> Work without internet; changes sync when you
+      reconnect.</li>
+  <li><strong>Self-hosted or hosted.</strong> One <code>docker compose up -d</code>
+      runs your own server.</li>
+  <li><strong>Zero telemetry.</strong> Privacy-first, MIT licensed.</li>
+</ul>
+
+<h2>Get started</h2>
+<p>Download the release ZIP, copy <code>NppSync.dll</code> into
+<code>Notepad++\plugins\NppSync\</code>, restart Notepad++, and follow the
+one-minute setup under <em>Plugins → Notepad++ Sync</em>.</p>
+
+<h2>Self-host</h2>
+<pre>git clone https://github.com/berkkarabacak/notepadpp-sync
+cd notepadpp-sync
+docker compose up -d</pre>
+
+<p>Docs: <a href="https://github.com/berkkarabacak/notepadpp-sync#readme">README</a> ·
+<a href="https://github.com/berkkarabacak/notepadpp-sync/blob/main/docs/user-guide.md">User guide</a> ·
+<a href="https://github.com/berkkarabacak/notepadpp-sync/blob/main/docs/self-hosting.md">Self-hosting</a> ·
+<a href="https://github.com/berkkarabacak/notepadpp-sync/blob/main/docs/security-model.md">Security model</a></p>
+
+</body>
+</html>
