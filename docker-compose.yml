@@ -28,7 +28,7 @@ services:
     build:
       context: ./server
       dockerfile: Dockerfile
-    image: ghcr.io/your-org/notepadpp-sync-server:latest
+    image: ghcr.io/berkkarabacak/notepadpp-sync-server:latest
     restart: unless-stopped
     depends_on:
       db:

@@ -7,19 +7,27 @@ default; S3/R2/MinIO is supported if you want it).
 ## Quick start
 
 ```bash
-git clone https://github.com/your-org/notepadpp-sync.git
+git clone https://github.com/berkkarabacak/notepadpp-sync.git
 cd notepadpp-sync
 cp .env.example .env
 # edit .env: set POSTGRES_PASSWORD and TOKEN_SIGNING_KEY (openssl rand -hex 32)
 docker compose up -d
 ```
 
-The API listens on `:8080`. Put it behind a TLS-terminating reverse proxy
+The API listens on `:8080`. Verify with `curl http://localhost:8080/health`.
+
+> **Note (fixed in v1.1.0):** the server container runs as a non-root user;
+> the Dockerfile creates and owns `/data/blobs` before switching users. If
+> you deployed an earlier build and see `mkdir /data/blobs/...: permission
+> denied`, pull the latest image and recreate the volumes.
+
+Put it behind a TLS-terminating reverse proxy
 (Caddy, nginx, Traefik) and set `BASE_URL=https://sync.myserver.com` and
-`NPSYNC_REQUIRE_HTTPS=true`.
+`NPSYNC_REQUIRE_HTTPS=true` for production. For a local test on your own
+machine, plain `http://localhost:8080` is fine.
 
 Then in the plugin: **Settings → Advanced → Backend URL** →
-`https://sync.myserver.com`.
+`https://sync.myserver.com` (or `http://localhost:8080` for local testing).
 
 ## Configuration
 

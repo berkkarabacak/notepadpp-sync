@@ -43,7 +43,7 @@ See the [User Guide](docs/user-guide.md) for details and screenshots.
 ### For self-hosters
 
 ```bash
-git clone https://github.com/your-org/notepadpp-sync.git
+git clone https://github.com/berkkarabacak/notepadpp-sync.git
 cd notepadpp-sync
 docker compose up -d
 ```

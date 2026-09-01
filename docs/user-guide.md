@@ -8,8 +8,10 @@ No command line required.
 1. Download the latest release ZIP (`NotepadPlusPlusSync-vX.Y.Z-win64.zip`)
    from the [Releases page](../../releases).
 2. Close Notepad++.
-3. Create the folder `C:\Program Files\Notepad++\plugins\NppSync\` and copy
-   `NppSync.dll` from the ZIP into it.
+3. Create the folder `%APPDATA%\Notepad++\plugins\NppSync\` (paste that path
+   into Explorer's address bar) and copy `NppSync.dll` from the ZIP into it.
+   - Alternatively, if you have admin rights, use
+     `C:\Program Files\Notepad++\plugins\NppSync\` (system-wide install).
 4. Open Notepad++. You should see **Plugins → Notepad++ Sync**.
 
 > Windows may mark downloaded DLLs as blocked. If the plugin does not appear,
