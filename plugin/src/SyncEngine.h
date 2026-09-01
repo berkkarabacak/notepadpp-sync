@@ -19,6 +19,7 @@
 #include <optional>
 #include <string>
 #include <thread>
+#include <vector>
 
 #include "ApiClient.h"
 #include "FolderWatcher.h"
@@ -82,6 +83,23 @@ class SyncEngine {
     // Manual actions.
     void syncNow();
     void setPaused(bool paused);
+
+    // ---- UI helpers (device & sync-root management) ----
+
+    struct DeviceInfo {
+        std::string id, name, createdAt, lastSeenAt;
+        bool revoked = false;
+        bool current = false;
+    };
+    bool listDevices(std::vector<DeviceInfo>& out, std::string& errorOut);
+    bool revokeDeviceById(const std::string& id, std::string& errorOut);
+    bool renameDeviceById(const std::string& id, const std::string& name, std::string& errorOut);
+
+    // Sync-root management; restarts watchers and rescans after changes.
+    void addSyncRootPath(const std::wstring& absPath, bool isFolder);
+    bool removeSyncRootPath(const std::string& rootId);
+    void reloadRoots();
+    void saveSettings();
 
     // Conflict resolution ("keepLocal" uploads local as new head;
     // "keepRemote" downloads remote; "keepBoth" writes a conflict copy).

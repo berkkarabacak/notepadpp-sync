@@ -334,6 +334,79 @@ void SyncEngine::setPaused(bool paused) {
         syncRequested_ = true;
 }
 
+// ---- UI helpers ----
+
+bool SyncEngine::listDevices(std::vector<DeviceInfo>& out, std::string& errorOut) {
+    ApiResponse r = api_->listDevices();
+    if (!r.transportOk) {
+        errorOut = "offline: " + r.transportError;
+        return false;
+    }
+    if (r.status != 200) {
+        errorOut = r.body.value("message", "failed to list devices");
+        return false;
+    }
+    out.clear();
+    for (auto& d : r.body.value("devices", json::array())) {
+        DeviceInfo di;
+        di.id = d.value("id", "");
+        di.name = d.value("name", "");
+        di.createdAt = d.value("created_at", "");
+        di.lastSeenAt = d.value("last_seen_at", "");
+        di.revoked = d.contains("revoked_at") && !d["revoked_at"].is_null();
+        di.current = d.value("current", false);
+        out.push_back(std::move(di));
+    }
+    return true;
+}
+
+bool SyncEngine::revokeDeviceById(const std::string& id, std::string& errorOut) {
+    ApiResponse r = api_->revokeDevice(id);
+    if (r.status != 200) {
+        errorOut = r.body.value("message", "revoke failed");
+        return false;
+    }
+    return true;
+}
+
+bool SyncEngine::renameDeviceById(const std::string& id, const std::string& name, std::string& errorOut) {
+    ApiResponse r = api_->renameDevice(id, name);
+    if (r.status != 200) {
+        errorOut = r.body.value("message", "rename failed");
+        return false;
+    }
+    if (id == settings_->deviceId) {
+        settings_->deviceName = name;
+        store_->save(*settings_);
+    }
+    return true;
+}
+
+void SyncEngine::addSyncRootPath(const std::wstring& absPath, bool isFolder) {
+    std::string id = Crypto::sha256Hex(PathUtil::wideToUtf8(absPath)).substr(0, 16);
+    db_.addSyncRoot(id, absPath, isFolder);
+    reloadRoots();
+}
+
+bool SyncEngine::removeSyncRootPath(const std::string& rootId) {
+    bool ok = db_.removeSyncRoot(rootId);
+    reloadRoots();
+    return ok;
+}
+
+void SyncEngine::reloadRoots() {
+    refreshIgnoreRules();
+    watcher_.stop();
+    watcher_.clearRoots();
+    for (auto& [id, path] : db_.listSyncRoots())
+        watcher_.addRoot(path);
+    watcher_.start([this](const FsEvent& ev) { onFsEvent(ev); });
+    fsDirty_ = true;
+    syncRequested_ = true;
+}
+
+void SyncEngine::saveSettings() { store_->save(*settings_); }
+
 void SyncEngine::syncNow() {
     settings_->pauseSync = false;
     syncRequested_ = true;
