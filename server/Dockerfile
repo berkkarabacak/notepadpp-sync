@@ -12,7 +12,8 @@ RUN CGO_ENABLED=0 GOOS=linux GOARCH=amd64 go build -trimpath -ldflags="-s -w" -o
 
 # ---- runtime stage ----
 FROM alpine:3.20
-RUN apk add --no-cache ca-certificates && adduser -D -u 10001 npsync
+RUN apk add --no-cache ca-certificates && adduser -D -u 10001 npsync \
+    && mkdir -p /data/blobs && chown -R npsync:npsync /data
 USER npsync
 WORKDIR /app
 COPY --from=build /out/server /app/server
