@@ -8,6 +8,7 @@
 #include "core/PathUtil.h"
 
 #include <commctrl.h>
+#include <commdlg.h>
 #include <cwchar>
 #include <objbase.h>
 #include <shlobj.h>
@@ -597,6 +598,7 @@ INT_PTR CALLBACK syncedFilesProc(HWND dlg, UINT msg, WPARAM wp, LPARAM lp) {
             return TRUE;
         }
         break;
+    }
     case WM_CLOSE: EndDialog(dlg, IDOK); return TRUE;
     }
     return FALSE;
