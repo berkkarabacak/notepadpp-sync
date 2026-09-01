@@ -405,7 +405,9 @@ void SyncEngine::reloadRoots() {
     syncRequested_ = true;
 }
 
-void SyncEngine::saveSettings() { store_->save(*settings_); }
+void SyncEngine::saveSettings() {
+    store_->save(*settings_);
+}
 
 void SyncEngine::syncNow() {
     settings_->pauseSync = false;

@@ -86,7 +86,8 @@ class SyncEngine {
 
     // ---- UI helpers (device & sync-root management) ----
 
-    struct DeviceInfo {
+    struct DeviceInfo
+    {
         std::string id, name, createdAt, lastSeenAt;
         bool revoked = false;
         bool current = false;
