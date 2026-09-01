@@ -5,6 +5,24 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.1.0] - 2026-09-02
+
+### Added
+- Full native settings dialog with tabs: General / Files / Session /
+  Security / Advanced.
+- Device management UI: list, rename, revoke (with confirmation), pairing
+  code request/approval.
+- Synced Files/Folders manager: add folders/files, remove roots, edit
+  ignore patterns.
+- Conflicts window with per-item Keep Local / Keep Remote / Keep Both /
+  Open Comparison actions.
+- Live Sync Status dialog with refresh.
+- Printable acceptance test script (`docs/acceptance-test-script.md`).
+
+### Fixed
+- Include-order safety on Windows (locked via `SortIncludes: Never`).
+- PowerShell packaging script encoding; release ref-name expansion.
+
 ## [1.0.0] - 2026-08-30
 
 ### Added
