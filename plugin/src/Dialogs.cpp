@@ -1097,8 +1097,11 @@ void Dialogs::showSettings(HWND parent, SyncEngine& engine) {
 void Dialogs::showFirstRunWizard(HWND parent, SyncEngine& engine) {
     int r = MessageBoxW(parent,
                         L"Welcome to Notepad++ Sync!\n\n"
+                        L"Notepad++ Sync talks to a server you run yourself. There is no"
+                        L" hosted service, so set Settings > Advanced > Backend URL first;"
+                        L" the default is a placeholder and will not connect.\n\n"
                         L"Setup takes a minute:\n"
-                        L"  1. Create an account or sign in\n"
+                        L"  1. Create an account or sign in on your server\n"
                         L"  2. Encryption keys are generated on this device (never uploaded)\n"
                         L"  3. Name this device\n"
                         L"  4. Choose files/folders to sync\n\n"

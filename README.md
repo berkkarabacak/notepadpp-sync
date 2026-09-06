@@ -22,7 +22,7 @@ Notepad++ Sync is a native Notepad++ plugin plus a small self-hostable backend. 
 - **Version history** — browse and restore recent versions of any file (configurable retention; 30 versions per file by default).
 - **File selection** — sync individual files or whole folders, with `.gitignore`-style exclude rules and a local `.npsyncignore` file.
 - **Session sync (optional)** — open tabs, selected tab, cursor and scroll positions. Unsaved documents are **never** uploaded by default.
-- **Self-hosted or hosted** — point the plugin at the hosted service or at your own server (`docker compose up -d`). No external object storage required.
+- **Self-hosted** — you run the server (`docker compose up -d`) and point the plugin at it. There is no hosted service to sign up for; the whole design assumes the server is yours. No external object storage required.
 - **Privacy-first** — zero analytics or telemetry.
 
 ## Installation
@@ -35,8 +35,11 @@ Notepad++ Sync is a native Notepad++ plugin plus a small self-hostable backend. 
    ```
    C:\Program Files\Notepad++\plugins\NppSync\
    ```
-4. Start Notepad++ → **Plugins → Notepad++ Sync → Sign In**.
-5. Follow the first-run setup: create an account (or sign in), generate encryption keys, name this device, choose files/folders, done.
+4. Stand up a server first (see *For self-hosters* below), then start Notepad++ →
+   **Plugins → Notepad++ Sync → Settings → Advanced** and set *Backend URL* to it.
+   The default is a placeholder and will not connect.
+5. **Plugins → Notepad++ Sync → Sign In**.
+6. Follow the first-run setup: create an account (or sign in), generate encryption keys, name this device, choose files/folders, done.
 
 See the [User Guide](docs/user-guide.md) for details and screenshots.
 

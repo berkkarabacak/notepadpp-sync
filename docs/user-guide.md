@@ -19,9 +19,14 @@ No command line required.
 
 ## 2. First-run setup
 
+> **You need a server before this step.** Notepad++ Sync has no hosted service.
+> Run one with `docker compose up -d` (see [Self-hosting](self-hosting.md)), then set
+> *Settings → Advanced → Backend URL* to it. The shipped default is a placeholder
+> and will not connect.
+
 The first time the plugin loads, a short setup runs:
 
-1. **Create an account or sign in.** Your password is only used to log in —
+1. **Create an account or sign in on your server.** Your password is only used to log in —
    it is never used to encrypt files and never leaves the plugin unhashed.
 2. **Encryption keys are generated on your device.** You'll see a recovery
    key like `NPSYNC-XXXX-XXXX-XXXX-XXXX-XXXX`. **Write it down and keep it
