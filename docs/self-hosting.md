@@ -187,9 +187,24 @@ Two setups that keep a fixed name:
 
 Point DNS for `<your-hostname>` at the machine running the proxy, and
 terminate TLS there. The [Caddy example](#reverse-proxy-example-caddy)
-above is enough (`reverse_proxy` to `127.0.0.1:8080`). nginx or Traefik
-work the same way if they forward HTTP Upgrade for `/ws` and set
-`X-Forwarded-Proto` from the connection they accepted.
+shows `reverse_proxy` to `127.0.0.1:8080`. nginx or Traefik work the same
+way if they forward HTTP Upgrade for `/ws` and set `X-Forwarded-Proto`
+from the connection they accepted. Caddy in front of the published port
+is not enough.
+
+`docker-compose.yml` publishes `8080:8080` with no host IP, so Docker
+listens on every interface. Compose sets `NPSYNC_REQUIRE_HTTPS=true`,
+which rejects a request only when `X-Forwarded-Proto` is the explicit
+value `http`. A client that opens port 8080 directly does not send that
+header, and the API accepts the call. On a public host, do not leave the
+API reachable on plaintext `:8080`. Use one of these:
+
+- Bind the publish to loopback only: change `8080:8080` to
+  `127.0.0.1:8080:8080`. A Caddy process on the same host can still use
+  `127.0.0.1:8080`.
+- Put Caddy on the Compose network `npsync` and do not publish the API
+  port. Proxy to `http://server:8080` on that network.
+- Firewall port 8080 so it is not reachable from the public network.
 
 In `.env`:
 
@@ -201,10 +216,9 @@ GOOGLE_REDIRECT_URI=
 TRUSTED_PROXIES=
 ```
 
-`docker compose up -d` after editing `.env`. Compose already sets
-`NPSYNC_REQUIRE_HTTPS=true`, which rejects a request only when
-`X-Forwarded-Proto` is `http`. Caddy’s `reverse_proxy` sends the visitor
-scheme. Set `TRUSTED_PROXIES` whenever a proxy sits in front; leave it
+`docker compose up -d` after editing `.env`. Caddy's `reverse_proxy` sends
+the visitor scheme, including `X-Forwarded-Proto: https` for an HTTPS
+visit. Set `TRUSTED_PROXIES` whenever a proxy sits in front; leave it
 empty only for the laptop demo.
 
 In the plugin, **Settings → Advanced → Backend URL** is that same
@@ -238,6 +252,19 @@ container is not the API. Use the compose service name and port
 tunnel sets the same hostname and service URL in the dashboard; do not
 also expect a local config file to win. Do not commit the credentials
 file or a tunnel token.
+
+Start the connector after the tunnel exists, the DNS route is published,
+and the ingress above is saved. On the host:
+
+```bash
+cloudflared tunnel run <name>
+```
+
+A dashboard tunnel installs the connector with the tunnel token instead.
+`docker compose up -d` does not start `cloudflared`. Compose has no tunnel
+service (only `db` and `server`), so the connector stays down until you
+start it. The tunnel also does not close the port Compose publishes. The
+plaintext `:8080` rule in (a) still applies.
 
 Then the same `.env` as (a): `BASE_URL=https://<your-hostname>`, and
 `TRUSTED_PROXIES` set to the address of `cloudflared` as the API container
