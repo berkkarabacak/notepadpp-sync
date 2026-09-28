@@ -104,7 +104,7 @@ func (s *Server) handleRegister(w http.ResponseWriter, r *http.Request) {
 		apperr.Write(w, apperr.BadRequest("device_name required (max 64 chars)"))
 		return
 	}
-	if !s.limiter.Allow(limiterKey(r, req.Email)) {
+	if !s.limiter.Allow(limiterKey(r, req.Email, s.cfg.TrustedProxies)) {
 		apperr.Write(w, apperr.RateLimited("too many attempts; try again later"))
 		return
 	}
@@ -132,7 +132,7 @@ func (s *Server) handleLogin(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	req.Email = normalizeEmail(req.Email)
-	if !s.limiter.Allow(limiterKey(r, req.Email)) {
+	if !s.limiter.Allow(limiterKey(r, req.Email, s.cfg.TrustedProxies)) {
 		apperr.Write(w, apperr.RateLimited("too many attempts; try again later"))
 		return
 	}

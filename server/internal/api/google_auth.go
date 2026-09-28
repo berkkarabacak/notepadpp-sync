@@ -57,7 +57,7 @@ func (s *Server) handleGoogleStart(w http.ResponseWriter, r *http.Request) {
 		apperr.Write(w, apperr.BadRequest("device_name must be at most 64 characters"))
 		return
 	}
-	if !s.limiter.Allow(limiterKey(r, "google-start")) {
+	if !s.limiter.Allow(limiterKey(r, "google-start", s.cfg.TrustedProxies)) {
 		apperr.Write(w, apperr.RateLimited("too many attempts; try again later"))
 		return
 	}
@@ -268,7 +268,7 @@ func (s *Server) handleGooglePoll(w http.ResponseWriter, r *http.Request) {
 }
 
 func (s *Server) rejectGooglePoll(w http.ResponseWriter, r *http.Request) {
-	if !s.limiter.Allow(limiterKey(r, "google-poll")) {
+	if !s.limiter.Allow(limiterKey(r, "google-poll", s.cfg.TrustedProxies)) {
 		apperr.Write(w, apperr.RateLimited("too many attempts; try again later"))
 		return
 	}

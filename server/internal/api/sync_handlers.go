@@ -426,6 +426,16 @@ func (s *Server) handleBatch(w http.ResponseWriter, r *http.Request) {
 			results = append(results, item)
 			continue
 		}
+		// Store the blob BEFORE committing metadata, matching single-file
+		// POST/PUT. A failed blob write must not leave a head record that
+		// other clients can list. Keys are content-addressed, so a retry
+		// of the same ciphertext is a no-op; an orphan blob from a later
+		// metadata conflict is invisible.
+		if err := s.storeBlob(r, u); err != nil {
+			item.OK, item.Error = false, "internal"
+			results = append(results, item)
+			continue
+		}
 		rec := s.recordFromRequest(r, u)
 		var out *store.FileRecord
 		var err error
@@ -449,14 +459,10 @@ func (s *Server) handleBatch(w http.ResponseWriter, r *http.Request) {
 		if err != nil {
 			item.OK, item.Error = false, "internal"
 		} else {
-			if s.storeBlob(r, u) != nil {
-				item.OK, item.Error = false, "internal"
-			} else {
-				item.OK = true
-				rj := toFileJSON(out, "")
-				item.Record = &rj
-				s.publish(accountID(r), deviceID(r), out)
-			}
+			item.OK = true
+			rj := toFileJSON(out, "")
+			item.Record = &rj
+			s.publish(accountID(r), deviceID(r), out)
 		}
 		results = append(results, item)
 	}

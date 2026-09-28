@@ -25,6 +25,10 @@ master key (32 bytes, generated locally, CSPRNG)
 └── encrypts: file contents (AAD "file"), metadata (AAD "metadata")
 ```
 
+The recovery key is `NPSYNC-` plus 20 characters from a 32-symbol alphabet
+(5 bits each, about 100 bits). It only wraps the 32-byte master key. The
+master key is what encrypts files.
+
 - Master key storage on device: DPAPI-protected (`%APPDATA%\Notepad++Sync\
   secrets\`), bound to the Windows user account.
 - Key wrapping: AES-256-GCM with domain-separating AAD, so a content
@@ -52,6 +56,10 @@ master key (32 bytes, generated locally, CSPRNG)
 - Login endpoints: per-IP+email rate limiting plus account lockout after
   repeated failures (default 8 → 15 min). Timing is equalized for unknown
   accounts.
+- The rate-limit IP is the direct TCP peer. `X-Forwarded-For` is used only
+  when that peer is listed in `NPSYNC_TRUSTED_PROXIES` (see
+  [self-hosting](self-hosting.md)). A client-supplied header cannot pick a
+  fresh bucket.
 
 ## Threat model (selected)
 

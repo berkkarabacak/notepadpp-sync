@@ -46,3 +46,17 @@ func TestGoogleDisabledByDefault(t *testing.T) {
 		t.Fatalf("redirect: %s", got)
 	}
 }
+
+func TestParseTrustedProxies(t *testing.T) {
+	empty, err := ParseTrustedProxies("  ")
+	if err != nil || len(empty) != 0 {
+		t.Fatalf("empty: %v %v", empty, err)
+	}
+	got, err := ParseTrustedProxies("10.0.0.0/8, 2001:db8::1")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(got) != 2 || got[0].String() != "10.0.0.0/8" || got[1].String() != "2001:db8::1/128" {
+		t.Fatalf("got %v", got)
+	}
+}

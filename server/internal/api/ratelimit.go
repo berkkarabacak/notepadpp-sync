@@ -1,7 +1,9 @@
 package api
 
 import (
+	"net"
 	"net/http"
+	"net/netip"
 	"strings"
 	"sync"
 	"time"
@@ -67,12 +69,69 @@ func (l *loginLimiter) Allow(key string) bool {
 	return true
 }
 
-func limiterKey(r *http.Request, email string) string {
-	ip := r.Header.Get("X-Forwarded-For")
-	if ip != "" {
-		ip = strings.Split(ip, ",")[0]
-	} else {
-		ip = r.RemoteAddr
+func limiterKey(r *http.Request, email string, trusted []netip.Prefix) string {
+	return clientIP(r, trusted) + "|" + strings.ToLower(strings.TrimSpace(email))
+}
+
+// clientIP is the address used for login rate limiting.
+//
+// X-Forwarded-For is ignored unless the direct peer (RemoteAddr) is in
+// trusted. A client can otherwise pick a fresh header value and skip the
+// limit. When the peer is trusted, the client address is the rightmost
+// forwarded hop that is not itself a trusted proxy — the address the proxy
+// appended — so a spoofed prefix does not become the bucket key.
+func clientIP(r *http.Request, trusted []netip.Prefix) string {
+	remote := remoteHost(r.RemoteAddr)
+	if len(trusted) == 0 || !ipTrusted(remote, trusted) {
+		return remote
 	}
-	return strings.TrimSpace(ip) + "|" + strings.ToLower(email)
+	xff := r.Header.Get("X-Forwarded-For")
+	if xff == "" {
+		return remote
+	}
+	parts := strings.Split(xff, ",")
+	for i := len(parts) - 1; i >= 0; i-- {
+		cand := strings.TrimSpace(parts[i])
+		if cand == "" {
+			continue
+		}
+		if !ipTrusted(cand, trusted) {
+			return cand
+		}
+	}
+	return remote
+}
+
+func remoteHost(remoteAddr string) string {
+	host, _, err := net.SplitHostPort(strings.TrimSpace(remoteAddr))
+	if err != nil {
+		return strings.Trim(strings.TrimSpace(remoteAddr), "[]")
+	}
+	return strings.Trim(host, "[]")
+}
+
+func ipTrusted(ip string, trusted []netip.Prefix) bool {
+	addr, ok := parseIP(ip)
+	if !ok {
+		return false
+	}
+	for _, p := range trusted {
+		if p.Contains(addr) {
+			return true
+		}
+	}
+	return false
+}
+
+func parseIP(ip string) (netip.Addr, bool) {
+	ip = strings.TrimSpace(ip)
+	if host, _, err := net.SplitHostPort(ip); err == nil {
+		ip = host
+	}
+	ip = strings.Trim(ip, "[]")
+	addr, err := netip.ParseAddr(ip)
+	if err != nil {
+		return netip.Addr{}, false
+	}
+	return addr, true
 }
