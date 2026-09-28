@@ -33,6 +33,10 @@ Compose sets `NPSYNC_REQUIRE_HTTPS=true`. That only rejects requests that arrive
 
 Optional Google sign-in: set `GOOGLE_CLIENT_ID` and `GOOGLE_CLIENT_SECRET`. `GOOGLE_REDIRECT_URI` defaults to `${BASE_URL}/auth/google/callback` (`http://localhost:8080/auth/google/callback` for this demo, which Google allows on localhost). Leave both credentials empty and the server keeps email and password only. The console steps are under [Google sign-in](#google-sign-in).
 
+The click-by-click path for the room is [investor-demo-script.md](investor-demo-script.md) (about 8–10 minutes). The 45-minute checklist is [acceptance-test-script.md](acceptance-test-script.md).
+
+A hostname other people can reach is [Public demo URL](#public-demo-url). That is a name you keep, not an ephemeral `*.trycloudflare.com` Quick Tunnel.
+
 ## Quick start
 
 ```bash
@@ -160,6 +164,117 @@ do that. For a single proxy, `TRUSTED_PROXIES` is the proxy's address as
 the server sees it (often a Docker bridge CIDR such as `172.16.0.0/12`,
 not the public IP of the proxy). Leave it empty for the laptop demo above:
 there is no proxy, and localhost is the client.
+
+## Public demo URL
+
+The laptop demo uses `BASE_URL=http://localhost:8080`. That URL is only
+reachable on that machine. A stable public demo needs a hostname that stays
+put, because the plugin Backend URL, device-pairing payloads, and (if you
+use Google) the OAuth redirect URI are all that one URL.
+
+You supply the hostname and DNS. You also supply Google OAuth client
+credentials if you want Google sign-in. This repo does not register a
+domain and does not contain a real client id or secret.
+`sync.myserver.com` in the Caddy snippet and in `.env.example` is a
+placeholder, not a host this project controls. Below, `<your-hostname>`
+means the name you chose. No trailing slash.
+
+Do not use a Cloudflare Quick Tunnel as that hostname. `cloudflared tunnel --url http://localhost:8080` assigns a random `*.trycloudflare.com` name that changes when the process starts again. `BASE_URL`, the plugin, and a redirect URI registered at Google would all be wrong after the next launch.
+
+Two setups that keep a fixed name:
+
+### (a) Your domain and a TLS reverse proxy
+
+Point DNS for `<your-hostname>` at the machine running the proxy, and
+terminate TLS there. The [Caddy example](#reverse-proxy-example-caddy)
+above is enough (`reverse_proxy` to `127.0.0.1:8080`). nginx or Traefik
+work the same way if they forward HTTP Upgrade for `/ws` and set
+`X-Forwarded-Proto` from the connection they accepted.
+
+In `.env`:
+
+```bash
+BASE_URL=https://<your-hostname>
+# Leave empty to use ${BASE_URL}/auth/google/callback.
+GOOGLE_REDIRECT_URI=
+# Proxy address as the server sees it. See "Client IP" above.
+TRUSTED_PROXIES=
+```
+
+`docker compose up -d` after editing `.env`. Compose already sets
+`NPSYNC_REQUIRE_HTTPS=true`, which rejects a request only when
+`X-Forwarded-Proto` is `http`. Caddy’s `reverse_proxy` sends the visitor
+scheme. Set `TRUSTED_PROXIES` whenever a proxy sits in front; leave it
+empty only for the laptop demo.
+
+In the plugin, **Settings → Advanced → Backend URL** is that same
+`https://<your-hostname>`. Restart Notepad++ after **Save** — the running
+process keeps the URL it loaded at startup.
+
+### (b) A named Cloudflare Tunnel with a fixed hostname
+
+Create a named tunnel in the Cloudflare account that holds the DNS zone
+for `<your-hostname>` (`cloudflared tunnel create <name>`, or
+**Networking → Tunnels** in the dashboard). Route that hostname to the
+tunnel (`cloudflared tunnel route dns <name> <your-hostname>`, or a
+published application route). The hostname has to be one the zone already
+lets you pick. Quick Tunnel does not give you that.
+
+Locally managed ingress (the last rule is the required catch-all):
+
+```yaml
+tunnel: <tunnel-name-or-uuid>
+credentials-file: <path-to-the-credentials-json>
+
+ingress:
+  - hostname: <your-hostname>
+    service: http://localhost:8080
+  - service: http_status:404
+```
+
+If `cloudflared` runs in another container, `localhost` inside that
+container is not the API. Use the compose service name and port
+(`http://server:8080`) on a shared network instead. A remotely managed
+tunnel sets the same hostname and service URL in the dashboard; do not
+also expect a local config file to win. Do not commit the credentials
+file or a tunnel token.
+
+Then the same `.env` as (a): `BASE_URL=https://<your-hostname>`, and
+`TRUSTED_PROXIES` set to the address of `cloudflared` as the API container
+sees it (the Docker bridge peer when `cloudflared` on the host connects to
+published port `8080`, not the visitor’s public IP). On a public `https`
+hostname, `cloudflared` forwards `X-Forwarded-Proto: https` to that local
+HTTP service and appends the visitor to `X-Forwarded-For`. The rate
+limiter uses that forwarded address only for a peer listed in
+`TRUSTED_PROXIES`.
+
+`/ws` is a normal HTTP Upgrade. Caddy’s `reverse_proxy` passes it, and an
+HTTP service on a named tunnel does too.
+
+### Google on that hostname
+
+Only if you want **Sign in with Google**. Create a **Web application**
+OAuth client (steps under [Google sign-in](#google-sign-in)) and put the
+id and secret in `.env`:
+
+```bash
+GOOGLE_CLIENT_ID=
+GOOGLE_CLIENT_SECRET=
+```
+
+Register this exact authorized redirect URI, which is what the server
+uses when `GOOGLE_REDIRECT_URI` is empty:
+
+```text
+https://<your-hostname>/auth/google/callback
+```
+
+If you set `GOOGLE_REDIRECT_URI`, use that same string so the redirect
+stays on the host in `BASE_URL`. With `NPSYNC_REQUIRE_HTTPS=true` the
+process refuses to start when the redirect URI is not `https`, except for
+`localhost`, `127.0.0.1`, and `::1`. A public Quick Tunnel name would also
+have to be re-registered at Google every time it changed — another reason
+not to use one as `BASE_URL`.
 
 ## Backups
 
