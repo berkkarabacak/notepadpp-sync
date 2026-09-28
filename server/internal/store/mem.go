@@ -14,7 +14,9 @@ type Mem struct {
 
 	accounts   map[string]*Account // by ID
 	byEmail    map[string]string   // email -> account ID
-	devices    map[string]*Device  // by ID
+	byGoogle   map[string]string   // google sub -> account ID
+	oauth      map[string]*OAuthLogin
+	devices    map[string]*Device // by ID
 	tokens     map[string]*RefreshToken
 	tokensByH  map[string]string          // hash -> token ID
 	files      map[string]*FileRecord     // accountID + "/" + fileID
@@ -32,6 +34,8 @@ func NewMem(uuidFn func() string) *Mem {
 	return &Mem{
 		accounts:   map[string]*Account{},
 		byEmail:    map[string]string{},
+		byGoogle:   map[string]string{},
+		oauth:      map[string]*OAuthLogin{},
 		devices:    map[string]*Device{},
 		tokens:     map[string]*RefreshToken{},
 		tokensByH:  map[string]string{},
@@ -52,13 +56,36 @@ func fileKey(accountID, fileID string) string { return accountID + "/" + fileID 
 func (m *Mem) CreateAccount(ctx context.Context, email, passwordHash string) (*Account, error) {
 	m.mu.Lock()
 	defer m.mu.Unlock()
+	return m.insertAccountLocked(email, passwordHash, "")
+}
+
+func (m *Mem) CreateGoogleAccount(ctx context.Context, email, googleSub string) (*Account, error) {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	if googleSub == "" {
+		return nil, ErrNotFound
+	}
+	if _, ok := m.byGoogle[googleSub]; ok {
+		return nil, ErrDuplicate
+	}
+	return m.insertAccountLocked(email, "", googleSub)
+}
+
+func (m *Mem) insertAccountLocked(email, passwordHash, googleSub string) (*Account, error) {
 	if _, ok := m.byEmail[email]; ok {
 		return nil, ErrEmailTaken
 	}
-	a := &Account{ID: m.uuidFn(), Email: email, PasswordHash: passwordHash, CreatedAt: time.Now()}
+	a := &Account{
+		ID: m.uuidFn(), Email: email, PasswordHash: passwordHash,
+		GoogleSub: googleSub, CreatedAt: time.Now(),
+	}
 	m.accounts[a.ID] = a
 	m.byEmail[email] = a.ID
-	return a, nil
+	if googleSub != "" {
+		m.byGoogle[googleSub] = a.ID
+	}
+	cp := *a
+	return &cp, nil
 }
 
 func (m *Mem) AccountByEmail(ctx context.Context, email string) (*Account, error) {
@@ -70,6 +97,38 @@ func (m *Mem) AccountByEmail(ctx context.Context, email string) (*Account, error
 	}
 	cp := *m.accounts[id]
 	return &cp, nil
+}
+
+func (m *Mem) AccountByGoogleSub(ctx context.Context, googleSub string) (*Account, error) {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	id, ok := m.byGoogle[googleSub]
+	if !ok {
+		return nil, ErrNotFound
+	}
+	cp := *m.accounts[id]
+	return &cp, nil
+}
+
+func (m *Mem) LinkGoogleSubject(ctx context.Context, accountID, googleSub string) error {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	a, ok := m.accounts[accountID]
+	if !ok {
+		return ErrNotFound
+	}
+	if a.GoogleSub == googleSub {
+		return nil
+	}
+	if a.GoogleSub != "" {
+		return ErrConflict
+	}
+	if other, taken := m.byGoogle[googleSub]; taken && other != accountID {
+		return ErrDuplicate
+	}
+	a.GoogleSub = googleSub
+	m.byGoogle[googleSub] = accountID
+	return nil
 }
 
 func (m *Mem) AccountByID(ctx context.Context, id string) (*Account, error) {
@@ -107,6 +166,109 @@ func (m *Mem) ResetFailedLogins(ctx context.Context, accountID string) error {
 		a.FailedLoginAttempts = 0
 		a.LockedUntil = nil
 	}
+	return nil
+}
+
+func (m *Mem) purgeExpiredOAuthLocked(now time.Time) {
+	cutoff := now.Add(-24 * time.Hour)
+	for state, login := range m.oauth {
+		if login.ExpiresAt.Before(cutoff) {
+			delete(m.oauth, state)
+		}
+	}
+}
+
+func (m *Mem) CreateOAuthLogin(ctx context.Context, login *OAuthLogin) error {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	m.purgeExpiredOAuthLocked(time.Now())
+	if _, ok := m.oauth[login.State]; ok {
+		return ErrDuplicate
+	}
+	cp := *login
+	if cp.Status == "" {
+		cp.Status = OAuthPending
+	}
+	if cp.CreatedAt.IsZero() {
+		cp.CreatedAt = time.Now()
+	}
+	m.oauth[login.State] = &cp
+	return nil
+}
+
+func (m *Mem) OAuthLoginByState(ctx context.Context, state string) (*OAuthLogin, error) {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	login, ok := m.oauth[state]
+	if !ok {
+		return nil, ErrNotFound
+	}
+	cp := *login
+	return &cp, nil
+}
+
+func (m *Mem) ClaimOAuthLogin(ctx context.Context, state string, now time.Time) (*OAuthLogin, error) {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	login, ok := m.oauth[state]
+	if !ok || login.Status != OAuthPending || !now.Before(login.ExpiresAt) {
+		return nil, ErrNotFound
+	}
+	login.Status = OAuthExchanging
+	cp := *login
+	return &cp, nil
+}
+
+func (m *Mem) MarkOAuthReady(ctx context.Context, state, accountID string) error {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	login, ok := m.oauth[state]
+	if !ok || login.Status != OAuthExchanging {
+		return ErrNotFound
+	}
+	login.Status = OAuthReady
+	login.AccountID = accountID
+	login.CodeVerifier = ""
+	login.ErrorCode = ""
+	login.ErrorMessage = ""
+	return nil
+}
+
+func (m *Mem) MarkOAuthError(ctx context.Context, state, code, message string) error {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	login, ok := m.oauth[state]
+	if !ok || login.Status != OAuthExchanging {
+		return ErrNotFound
+	}
+	login.Status = OAuthError
+	login.ErrorCode = code
+	login.ErrorMessage = message
+	login.CodeVerifier = ""
+	return nil
+}
+
+func (m *Mem) ConsumeOAuthLogin(ctx context.Context, state string) (*OAuthLogin, error) {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	login, ok := m.oauth[state]
+	if !ok || login.Status != OAuthReady {
+		return nil, ErrNotFound
+	}
+	login.Status = OAuthConsumed
+	login.CodeVerifier = ""
+	cp := *login
+	return &cp, nil
+}
+
+func (m *Mem) ReopenOAuthLogin(ctx context.Context, state string) error {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	login, ok := m.oauth[state]
+	if !ok || login.Status != OAuthConsumed {
+		return ErrNotFound
+	}
+	login.Status = OAuthReady
 	return nil
 }
 

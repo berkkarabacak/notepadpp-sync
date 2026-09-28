@@ -10,10 +10,30 @@ import (
 type Store interface {
 	// ---- accounts ----
 	CreateAccount(ctx context.Context, email, passwordHash string) (*Account, error)
+	// CreateGoogleAccount inserts an account with no password hash.
+	CreateGoogleAccount(ctx context.Context, email, googleSub string) (*Account, error)
 	AccountByEmail(ctx context.Context, email string) (*Account, error)
+	AccountByGoogleSub(ctx context.Context, googleSub string) (*Account, error)
 	AccountByID(ctx context.Context, id string) (*Account, error)
+	// LinkGoogleSubject sets google_sub when it is still empty.
+	// ErrConflict: this account is already linked to a different subject.
+	// ErrDuplicate: this subject is already linked to another account.
+	LinkGoogleSubject(ctx context.Context, accountID, googleSub string) error
 	RecordFailedLogin(ctx context.Context, accountID string, lockAfter int, lockFor time.Duration) (*Account, error)
 	ResetFailedLogins(ctx context.Context, accountID string) error
+
+	// ---- Google browser logins (Authorization Code + PKCE) ----
+	CreateOAuthLogin(ctx context.Context, login *OAuthLogin) error
+	OAuthLoginByState(ctx context.Context, state string) (*OAuthLogin, error)
+	// ClaimOAuthLogin moves pending → exchanging when now is before expiry.
+	// A second claim fails so only one callback redeems the authorization code.
+	ClaimOAuthLogin(ctx context.Context, state string, now time.Time) (*OAuthLogin, error)
+	MarkOAuthReady(ctx context.Context, state, accountID string) error
+	MarkOAuthError(ctx context.Context, state, code, message string) error
+	// ConsumeOAuthLogin moves ready → consumed. ErrNotFound if it was not ready.
+	ConsumeOAuthLogin(ctx context.Context, state string) (*OAuthLogin, error)
+	// ReopenOAuthLogin moves consumed → ready so a failed token issue can retry.
+	ReopenOAuthLogin(ctx context.Context, state string) error
 
 	// ---- devices ----
 	CreateDevice(ctx context.Context, accountID, name string) (*Device, error)

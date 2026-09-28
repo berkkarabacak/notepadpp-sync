@@ -18,7 +18,8 @@ class SyncEngine;
 namespace Dialogs
 {
 
-// Sign in / create account (email, password, server URL in advanced).
+// Sign in. Google is the primary button; email/password stays for accounts
+// that already have a password and for servers without Google configured.
 bool showSignIn(HWND parent, SyncEngine& engine);
 
 // Sync Status window (status, last sync, counts, devices).

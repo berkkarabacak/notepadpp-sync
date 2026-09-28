@@ -39,7 +39,7 @@ Notepad++ Sync is a native Notepad++ plugin plus a small self-hostable backend. 
    **Plugins → Notepad++ Sync → Settings → Advanced** and set *Backend URL* to it.
    The default is a placeholder and will not connect.
 5. **Plugins → Notepad++ Sync → Sign In**.
-6. Follow the first-run setup: create an account (or sign in), generate encryption keys, name this device, choose files/folders, done.
+6. Follow the first-run setup: **Sign in with Google** (or email and password, for an existing account), generate encryption keys, name this device, choose files/folders, done.
 
 See the [User Guide](docs/user-guide.md) for details and screenshots.
 
@@ -59,7 +59,7 @@ Everything lives under **Plugins → Notepad++ Sync**:
 
 | Menu item        | What it does                                        |
 |------------------|-----------------------------------------------------|
-| Sign In / Out    | Authenticate with your account                      |
+| Sign In / Out    | Sign in with Google, or with email and password    |
 | Sync Now         | Force an immediate sync cycle                       |
 | Sync Status      | Status window (state, last sync, pending ops, devices) |
 | Manage Devices   | List / rename / revoke devices, pair a new device   |
@@ -73,7 +73,7 @@ A small status indicator shows `Synced`, `Syncing`, `Offline`, `Conflict`, or `E
 
 ## Security model (summary)
 
-- **Auth and encryption are separate.** Passwords are hashed with Argon2id and used only for authentication. File encryption uses a master key generated locally on first setup; the server never sees it, your password, or your recovery key.
+- **Auth and encryption are separate.** Google sign-in (and email/password, where you still use it) only authenticates the account. File encryption uses a master key generated locally on first setup; the server never sees it, your Google tokens, your password, or your recovery key. A new device still needs pairing or the recovery key.
 - Files are encrypted client-side with XChaCha20-Poly1305; metadata (names, paths) is encrypted as well. The server stores account IDs, opaque file IDs, ciphertext, sizes, and version vectors only.
 - Access tokens expire; refresh tokens are revocable per device. Login endpoints are rate-limited with brute-force protection.
 - Losing **all** devices **and** the recovery key means your encrypted data is unrecoverable — there is deliberately no server-side password reset that can decrypt your files.

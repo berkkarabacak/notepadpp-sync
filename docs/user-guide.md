@@ -26,8 +26,11 @@ No command line required.
 
 The first time the plugin loads, a short setup runs:
 
-1. **Create an account or sign in on your server.** Your password is only used to log in —
-   it is never used to encrypt files and never leaves the plugin unhashed.
+1. **Sign in with Google** (the primary button). Google only identifies the
+   account. It is not used to encrypt files, and the plugin never stores a
+   Google token. Email and password remain for an account you already
+   created that way, and for a server that has not configured Google.
+   A Google-only account has no password.
 2. **Encryption keys are generated on your device.** You'll see a recovery
    key like `NPSYNC-XXXX-XXXX-XXXX-XXXX-XXXX`. **Write it down and keep it
    offline.** If you lose every device *and* this key, your notes are
@@ -70,7 +73,9 @@ Nothing is ever silently discarded.
 
 ## 5. Adding a second laptop
 
-1. Install the plugin on the new laptop and sign in.
+1. Install the plugin on the new laptop and sign in with the same Google
+   account (or the same email and password). Signing in does not copy the
+   encryption key.
 2. On the new device: **Manage Devices → pair** — a code like `ABCD-EFGH`
    appears.
 3. On any existing device: approve the pairing and enter the code. The

@@ -1,7 +1,9 @@
 name: Server CI
 
+# Check-only. Do not commit, rebase, or push from CI: pull_request
+# checkouts are detached merge refs, and rewriting them conflicts.
 permissions:
-  contents: write
+  contents: read
 
 on:
   workflow_dispatch:
@@ -35,20 +37,23 @@ jobs:
         with:
           go-version: '1.25'
 
-      - name: Resolve modules
-        working-directory: server
-        run: go mod tidy
-
-      - name: gofmt auto-fix
+      - name: Check gofmt
         working-directory: server
         run: |
-          gofmt -w .
-          git config user.name "npsync-ci"
-          git config user.email "ci@users.noreply.github.com"
-          git add -A
-          git diff --cached --quiet || git commit -m "style: gofmt"
-          git pull --rebase origin main
-          git push
+          set -euo pipefail
+          unformatted="$(gofmt -l .)"
+          if [ -n "$unformatted" ]; then
+            echo "gofmt would change:"
+            printf '%s\n' "$unformatted"
+            exit 1
+          fi
+
+      - name: Check Go modules are tidy
+        working-directory: server
+        run: |
+          set -euo pipefail
+          go mod tidy
+          git diff --exit-code -- go.mod go.sum
 
       - name: go vet
         working-directory: server

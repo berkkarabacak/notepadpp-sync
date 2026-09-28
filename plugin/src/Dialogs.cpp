@@ -11,6 +11,7 @@
 #include <commdlg.h>
 #include <cwchar>
 #include <objbase.h>
+#include <shellapi.h>
 #include <shlobj.h>
 #include <string>
 #include <vector>
@@ -224,7 +225,8 @@ namespace
 {
 enum
 {
-    ID_SIGNIN_EMAIL = 100,
+    ID_SIGNIN_GOOGLE = 100,
+    ID_SIGNIN_EMAIL,
     ID_SIGNIN_PASSWORD,
     ID_SIGNIN_CREATE,
     ID_SIGNIN_OK,
@@ -232,26 +234,119 @@ enum
     ID_SIGNIN_STATUS
 };
 
+constexpr UINT_PTR kGooglePollTimer = 1;
+constexpr ULONGLONG kGooglePollLimitMs = 10ull * 60ull * 1000ull;
+
+struct SignInCtx : DialogBase
+{
+    std::string googleState;
+    std::string googlePollSecret;
+    bool googlePending = false;
+    bool polling = false;
+    ULONGLONG googleStartedAt = 0;
+};
+
+bool openHttpUrl(const std::string& url) {
+    if (url.rfind("https://", 0) != 0 && url.rfind("http://", 0) != 0)
+        return false;
+    HINSTANCE launched = ShellExecuteW(nullptr, L"open", widen(url).c_str(), nullptr, nullptr, SW_SHOWNORMAL);
+    return reinterpret_cast<intptr_t>(launched) > 32;
+}
+
+void setGoogleBusy(HWND dlg, bool busy) {
+    EnableWindow(GetDlgItem(dlg, ID_SIGNIN_GOOGLE), busy ? FALSE : TRUE);
+    EnableWindow(GetDlgItem(dlg, ID_SIGNIN_OK), busy ? FALSE : TRUE);
+    EnableWindow(GetDlgItem(dlg, ID_SIGNIN_EMAIL), busy ? FALSE : TRUE);
+    EnableWindow(GetDlgItem(dlg, ID_SIGNIN_PASSWORD), busy ? FALSE : TRUE);
+}
+
 INT_PTR CALLBACK signInProc(HWND dlg, UINT msg, WPARAM wp, LPARAM lp) {
     switch (msg) {
     case WM_INITDIALOG: {
         SetWindowLongPtrW(dlg, GWLP_USERDATA, lp);
-        makeLabel(dlg, L"Email:", 12, 14, 80, 20);
-        makeEdit(dlg, ID_SIGNIN_EMAIL, 100, 12, 240, 22);
-        makeLabel(dlg, L"Password:", 12, 44, 80, 20);
-        makeEdit(dlg, ID_SIGNIN_PASSWORD, 100, 42, 240, 22, ES_PASSWORD);
-        makeButton(dlg, ID_SIGNIN_CREATE, L"Create a new account (instead of signing in)", 100, 74, 260, 20,
-                   BS_AUTOCHECKBOX);
-        makeButton(dlg, ID_SIGNIN_OK, L"Sign In", 100, 104, 100, 26, BS_DEFPUSHBUTTON);
-        makeButton(dlg, ID_SIGNIN_CANCEL, L"Cancel", 210, 104, 100, 26);
-        CreateWindowExW(0, L"STATIC", L"", WS_CHILD | WS_VISIBLE, 12, 140, 340, 20, dlg,
+        makeLabel(dlg, L"Sign in with Google. This only identifies your account -", 12, 10, 390, 16);
+        makeLabel(dlg, L"encryption keys stay on this device.", 12, 26, 390, 16);
+        makeButton(dlg, ID_SIGNIN_GOOGLE, L"Sign in with Google", 12, 48, 390, 28, BS_DEFPUSHBUTTON);
+        CreateWindowExW(0, L"STATIC", L"", WS_CHILD | WS_VISIBLE, 12, 82, 390, 32, dlg,
                         (HMENU)(intptr_t)ID_SIGNIN_STATUS, nullptr, nullptr);
+        makeLabel(dlg, L"Email and password (existing accounts)", 12, 118, 390, 16);
+        makeLabel(dlg, L"Email:", 12, 144, 70, 20);
+        makeEdit(dlg, ID_SIGNIN_EMAIL, 88, 142, 314, 22);
+        makeLabel(dlg, L"Password:", 12, 172, 70, 20);
+        makeEdit(dlg, ID_SIGNIN_PASSWORD, 88, 170, 314, 22, ES_PASSWORD);
+        makeButton(dlg, ID_SIGNIN_CREATE, L"Create a new account (instead of signing in)", 88, 198, 314, 20,
+                   BS_AUTOCHECKBOX);
+        makeButton(dlg, ID_SIGNIN_OK, L"Sign in with email", 88, 226, 150, 26);
+        makeButton(dlg, ID_SIGNIN_CANCEL, L"Cancel", 248, 226, 154, 26);
         setDefaultFont(dlg);
+        return TRUE;
+    }
+    case WM_TIMER: {
+        if (wp != kGooglePollTimer)
+            break;
+        auto& c = static_cast<SignInCtx&>(ctx(dlg));
+        if (!c.googlePending || c.polling)
+            return TRUE;
+        if (GetTickCount64() - c.googleStartedAt > kGooglePollLimitMs) {
+            KillTimer(dlg, kGooglePollTimer);
+            c.googlePending = false;
+            setGoogleBusy(dlg, false);
+            setText(dlg, ID_SIGNIN_STATUS, L"Google sign-in timed out. Try again.");
+            return TRUE;
+        }
+        c.polling = true;
+        std::string err;
+        auto st = c.engine->pollGoogleSignIn(c.googleState, c.googlePollSecret, err);
+        c.polling = false;
+        if (st == SyncEngine::GoogleSignInStatus::Pending) {
+            if (!err.empty())
+                setText(dlg, ID_SIGNIN_STATUS, widen(err));
+            else
+                setText(dlg, ID_SIGNIN_STATUS,
+                        L"Waiting for Google\u2026 finish in the browser, then return here.");
+            return TRUE;
+        }
+        KillTimer(dlg, kGooglePollTimer);
+        c.googlePending = false;
+        setGoogleBusy(dlg, false);
+        if (st == SyncEngine::GoogleSignInStatus::Success) {
+            c.done = true;
+            EndDialog(dlg, IDOK);
+            return TRUE;
+        }
+        setText(dlg, ID_SIGNIN_STATUS, widen(err));
         return TRUE;
     }
     case WM_COMMAND:
         switch (LOWORD(wp)) {
+        case ID_SIGNIN_GOOGLE: {
+            auto& c = static_cast<SignInCtx&>(ctx(dlg));
+            if (c.googlePending)
+                return TRUE;
+            std::string url, state, secret, err;
+            if (!c.engine->startGoogleSignIn(url, state, secret, err)) {
+                setText(dlg, ID_SIGNIN_STATUS, widen(err));
+                return TRUE;
+            }
+            if (!openHttpUrl(url)) {
+                setText(dlg, ID_SIGNIN_STATUS,
+                        L"Could not open the browser. Copy the server URL and try again.");
+                return TRUE;
+            }
+            c.googleState = state;
+            c.googlePollSecret = secret;
+            c.googlePending = true;
+            c.googleStartedAt = GetTickCount64();
+            setGoogleBusy(dlg, true);
+            setText(dlg, ID_SIGNIN_STATUS,
+                    L"Waiting for Google\u2026 finish in the browser, then return here.");
+            SetTimer(dlg, kGooglePollTimer, 1000, nullptr);
+            return TRUE;
+        }
         case ID_SIGNIN_OK: {
+            auto& c = static_cast<SignInCtx&>(ctx(dlg));
+            if (c.googlePending)
+                return TRUE;
             std::string email = narrow(editText(GetDlgItem(dlg, ID_SIGNIN_EMAIL)));
             std::string password = narrow(editText(GetDlgItem(dlg, ID_SIGNIN_PASSWORD)));
             bool create = SendMessageW(GetDlgItem(dlg, ID_SIGNIN_CREATE), BM_GETCHECK, 0, 0) == BST_CHECKED;
@@ -260,8 +355,8 @@ INT_PTR CALLBACK signInProc(HWND dlg, UINT msg, WPARAM wp, LPARAM lp) {
                 return TRUE;
             }
             std::string err;
-            if (ctx(dlg).engine->signIn(email, password, err, create)) {
-                ctx(dlg).done = true;
+            if (c.engine->signIn(email, password, err, create)) {
+                c.done = true;
                 EndDialog(dlg, IDOK);
             }
             else {
@@ -270,21 +365,27 @@ INT_PTR CALLBACK signInProc(HWND dlg, UINT msg, WPARAM wp, LPARAM lp) {
             return TRUE;
         }
         case ID_SIGNIN_CANCEL:
+            KillTimer(dlg, kGooglePollTimer);
             EndDialog(dlg, IDCANCEL);
             return TRUE;
         }
         break;
     case WM_CLOSE:
+        KillTimer(dlg, kGooglePollTimer);
         EndDialog(dlg, IDCANCEL);
         return TRUE;
+    case WM_DESTROY:
+        KillTimer(dlg, kGooglePollTimer);
+        break;
     }
     return FALSE;
 }
 } // namespace
 
 bool Dialogs::showSignIn(HWND parent, SyncEngine& engine) {
-    DialogBase base{&engine, false, ""};
-    INT_PTR r = runModal(parent, L"Notepad++ Sync — Sign In", 370, 175, signInProc, base);
+    SignInCtx base;
+    base.engine = &engine;
+    INT_PTR r = runModal(parent, L"Notepad++ Sync — Sign In", 420, 280, signInProc, base);
     return r == IDOK && base.done;
 }
 
@@ -1101,10 +1202,12 @@ void Dialogs::showFirstRunWizard(HWND parent, SyncEngine& engine) {
                         L" hosted service, so set Settings > Advanced > Backend URL first;"
                         L" the default is a placeholder and will not connect.\n\n"
                         L"Setup takes a minute:\n"
-                        L"  1. Create an account or sign in on your server\n"
+                        L"  1. Sign in with Google, or with email and password\n"
                         L"  2. Encryption keys are generated on this device (never uploaded)\n"
                         L"  3. Name this device\n"
                         L"  4. Choose files/folders to sync\n\n"
+                        L"Google only identifies the account. A second device still needs\n"
+                        L"pairing or your recovery key.\n\n"
                         L"Continue?",
                         L"Notepad++ Sync — Setup", MB_YESNO | MB_ICONQUESTION);
     if (r != IDYES)
@@ -1119,7 +1222,8 @@ void Dialogs::showFirstRunWizard(HWND parent, SyncEngine& engine) {
         if (!rk.empty()) {
             std::wstring msg = L"Your recovery key (store it offline, safely):\n\n" + widen(rk) +
                                L"\n\nIf you lose every device AND this key, your notes cannot be recovered. "
-                               L"There is no password reset for encrypted data.";
+                               L"There is no password reset for encrypted data. "
+                               L"Signing in with Google does not replace this key.";
             MessageBoxW(parent, msg.c_str(), L"Notepad++ Sync — Recovery Key", MB_OK | MB_ICONWARNING);
         }
     }

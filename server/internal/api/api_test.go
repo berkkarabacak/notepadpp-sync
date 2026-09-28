@@ -22,6 +22,7 @@ import (
 
 type testEnv struct {
 	t      *testing.T
+	api    *Server
 	server *httptest.Server
 	st     store.Store
 	cfg    *config.Config
@@ -54,7 +55,7 @@ func newTestEnv(t *testing.T) *testEnv {
 		return fmt.Sprintf("11111111-2222-4333-8444-%012d", uuidN)
 	})
 	srv := NewServer(cfg, st, blobs)
-	env := &testEnv{t: t, server: httptest.NewServer(srv.Handler()), st: st, cfg: cfg}
+	env := &testEnv{t: t, api: srv, server: httptest.NewServer(srv.Handler()), st: st, cfg: cfg}
 	t.Cleanup(env.server.Close)
 	return env
 }

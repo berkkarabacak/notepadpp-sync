@@ -8,6 +8,7 @@ import (
 	"fmt"
 	"time"
 
+	"github.com/jackc/pgx/v5/pgconn"
 	_ "github.com/jackc/pgx/v5/stdlib"
 )
 
@@ -38,13 +39,35 @@ func (p *Postgres) Close() error { return p.db.Close() }
 // ---- accounts ----
 
 func (p *Postgres) CreateAccount(ctx context.Context, email, passwordHash string) (*Account, error) {
-	a := &Account{ID: p.uuidFn(), Email: email, PasswordHash: passwordHash}
+	return p.insertAccount(ctx, email, passwordHash, "")
+}
+
+func (p *Postgres) CreateGoogleAccount(ctx context.Context, email, googleSub string) (*Account, error) {
+	if googleSub == "" {
+		return nil, ErrNotFound
+	}
+	return p.insertAccount(ctx, email, "", googleSub)
+}
+
+func (p *Postgres) insertAccount(ctx context.Context, email, passwordHash, googleSub string) (*Account, error) {
+	a := &Account{ID: p.uuidFn(), Email: email, PasswordHash: passwordHash, GoogleSub: googleSub}
+	var hash any
+	var sub any
+	if passwordHash != "" {
+		hash = passwordHash
+	}
+	if googleSub != "" {
+		sub = googleSub
+	}
 	err := p.db.QueryRowContext(ctx,
-		`INSERT INTO accounts (id, email, password_hash) VALUES ($1, $2, $3)
+		`INSERT INTO accounts (id, email, password_hash, google_sub) VALUES ($1, $2, $3, $4)
 		 RETURNING created_at, failed_login_attempts`,
-		a.ID, email, passwordHash).Scan(&a.CreatedAt, &a.FailedLoginAttempts)
+		a.ID, email, hash, sub).Scan(&a.CreatedAt, &a.FailedLoginAttempts)
 	if err != nil {
-		if isUniqueViolation(err) {
+		if constraint := uniqueConstraint(err); constraint != "" {
+			if constraint == "accounts_google_sub_idx" {
+				return nil, ErrDuplicate
+			}
 			return nil, ErrEmailTaken
 		}
 		return nil, err
@@ -52,17 +75,20 @@ func (p *Postgres) CreateAccount(ctx context.Context, email, passwordHash string
 	return a, nil
 }
 
-const accountCols = `id, email, password_hash, created_at, failed_login_attempts, locked_until`
+const accountCols = `id, email, password_hash, created_at, failed_login_attempts, locked_until, google_sub`
 
 func scanAccount(row interface{ Scan(...any) error }) (*Account, error) {
 	var a Account
-	err := row.Scan(&a.ID, &a.Email, &a.PasswordHash, &a.CreatedAt, &a.FailedLoginAttempts, &a.LockedUntil)
+	var passwordHash, googleSub sql.NullString
+	err := row.Scan(&a.ID, &a.Email, &passwordHash, &a.CreatedAt, &a.FailedLoginAttempts, &a.LockedUntil, &googleSub)
 	if errors.Is(err, sql.ErrNoRows) {
 		return nil, ErrNotFound
 	}
 	if err != nil {
 		return nil, err
 	}
+	a.PasswordHash = passwordHash.String
+	a.GoogleSub = googleSub.String
 	return &a, nil
 }
 
@@ -74,6 +100,41 @@ func (p *Postgres) AccountByEmail(ctx context.Context, email string) (*Account, 
 func (p *Postgres) AccountByID(ctx context.Context, id string) (*Account, error) {
 	return scanAccount(p.db.QueryRowContext(ctx,
 		`SELECT `+accountCols+` FROM accounts WHERE id = $1`, id))
+}
+
+func (p *Postgres) AccountByGoogleSub(ctx context.Context, googleSub string) (*Account, error) {
+	return scanAccount(p.db.QueryRowContext(ctx,
+		`SELECT `+accountCols+` FROM accounts WHERE google_sub = $1`, googleSub))
+}
+
+func (p *Postgres) LinkGoogleSubject(ctx context.Context, accountID, googleSub string) error {
+	res, err := p.db.ExecContext(ctx,
+		`UPDATE accounts SET google_sub = $2 WHERE id = $1 AND google_sub IS NULL`,
+		accountID, googleSub)
+	if err != nil {
+		if isUniqueViolation(err) {
+			return ErrDuplicate
+		}
+		return err
+	}
+	n, err := res.RowsAffected()
+	if err != nil {
+		return err
+	}
+	if n == 1 {
+		return nil
+	}
+	acct, err := p.AccountByID(ctx, accountID)
+	if err != nil {
+		return err
+	}
+	if acct.GoogleSub == googleSub {
+		return nil
+	}
+	if acct.GoogleSub != "" {
+		return ErrConflict
+	}
+	return ErrNotFound
 }
 
 func (p *Postgres) RecordFailedLogin(ctx context.Context, accountID string, lockAfter int, lockFor time.Duration) (*Account, error) {
@@ -94,6 +155,95 @@ func (p *Postgres) ResetFailedLogins(ctx context.Context, accountID string) erro
 	_, err := p.db.ExecContext(ctx,
 		`UPDATE accounts SET failed_login_attempts = 0, locked_until = NULL WHERE id = $1`, accountID)
 	return err
+}
+
+const oauthCols = `state, code_verifier, nonce, device_name, poll_secret_hash, created_at, expires_at, status, ` +
+	`COALESCE(account_id::text, ''), COALESCE(error_code, ''), COALESCE(error_message, '')`
+
+func scanOAuth(row interface{ Scan(...any) error }) (*OAuthLogin, error) {
+	var l OAuthLogin
+	err := row.Scan(&l.State, &l.CodeVerifier, &l.Nonce, &l.DeviceName, &l.PollSecretHash,
+		&l.CreatedAt, &l.ExpiresAt, &l.Status, &l.AccountID, &l.ErrorCode, &l.ErrorMessage)
+	if errors.Is(err, sql.ErrNoRows) {
+		return nil, ErrNotFound
+	}
+	if err != nil {
+		return nil, err
+	}
+	return &l, nil
+}
+
+func (p *Postgres) CreateOAuthLogin(ctx context.Context, login *OAuthLogin) error {
+	_, _ = p.db.ExecContext(ctx, `DELETE FROM oauth_logins WHERE expires_at < now() - interval '1 day'`)
+	status := login.Status
+	if status == "" {
+		status = OAuthPending
+	}
+	_, err := p.db.ExecContext(ctx,
+		`INSERT INTO oauth_logins
+		   (state, code_verifier, nonce, device_name, poll_secret_hash, expires_at, status)
+		 VALUES ($1, $2, $3, $4, $5, $6, $7)`,
+		login.State, login.CodeVerifier, login.Nonce, login.DeviceName, login.PollSecretHash,
+		login.ExpiresAt, status)
+	if isUniqueViolation(err) {
+		return ErrDuplicate
+	}
+	return err
+}
+
+func (p *Postgres) OAuthLoginByState(ctx context.Context, state string) (*OAuthLogin, error) {
+	return scanOAuth(p.db.QueryRowContext(ctx,
+		`SELECT `+oauthCols+` FROM oauth_logins WHERE state = $1`, state))
+}
+
+func (p *Postgres) ClaimOAuthLogin(ctx context.Context, state string, now time.Time) (*OAuthLogin, error) {
+	return scanOAuth(p.db.QueryRowContext(ctx,
+		`UPDATE oauth_logins SET status = $3
+		 WHERE state = $1 AND status = $4 AND expires_at > $2
+		 RETURNING `+oauthCols,
+		state, now, OAuthExchanging, OAuthPending))
+}
+
+func (p *Postgres) MarkOAuthReady(ctx context.Context, state, accountID string) error {
+	res, err := p.db.ExecContext(ctx,
+		`UPDATE oauth_logins
+		 SET status = $3, account_id = $2, code_verifier = '', error_code = NULL, error_message = NULL
+		 WHERE state = $1 AND status = $4`,
+		state, accountID, OAuthReady, OAuthExchanging)
+	if err != nil {
+		return err
+	}
+	return requireAffected(res)
+}
+
+func (p *Postgres) MarkOAuthError(ctx context.Context, state, code, message string) error {
+	res, err := p.db.ExecContext(ctx,
+		`UPDATE oauth_logins
+		 SET status = $4, error_code = $2, error_message = $3, code_verifier = ''
+		 WHERE state = $1 AND status = $5`,
+		state, code, message, OAuthError, OAuthExchanging)
+	if err != nil {
+		return err
+	}
+	return requireAffected(res)
+}
+
+func (p *Postgres) ConsumeOAuthLogin(ctx context.Context, state string) (*OAuthLogin, error) {
+	return scanOAuth(p.db.QueryRowContext(ctx,
+		`UPDATE oauth_logins SET status = $2, code_verifier = ''
+		 WHERE state = $1 AND status = $3
+		 RETURNING `+oauthCols,
+		state, OAuthConsumed, OAuthReady))
+}
+
+func (p *Postgres) ReopenOAuthLogin(ctx context.Context, state string) error {
+	res, err := p.db.ExecContext(ctx,
+		`UPDATE oauth_logins SET status = $2 WHERE state = $1 AND status = $3`,
+		state, OAuthReady, OAuthConsumed)
+	if err != nil {
+		return err
+	}
+	return requireAffected(res)
 }
 
 // ---- devices ----
@@ -670,6 +820,17 @@ func requireAffected(res interface{ RowsAffected() (int64, error) }) error {
 		return ErrNotFound
 	}
 	return nil
+}
+
+func uniqueConstraint(err error) string {
+	var pg *pgconn.PgError
+	if errors.As(err, &pg) && pg.Code == "23505" {
+		return pg.ConstraintName
+	}
+	if isUniqueViolation(err) {
+		return "unknown"
+	}
+	return ""
 }
 
 func isUniqueViolation(err error) bool {

@@ -18,13 +18,41 @@ var (
 	ErrDuplicate      = errors.New("duplicate")
 )
 
+// OAuth login session statuses. The browser callback moves a row from
+// pending → exchanging → ready|error. The plugin poll moves ready → consumed
+// and only then receives NPSync tokens.
+const (
+	OAuthPending    = "pending"
+	OAuthExchanging = "exchanging"
+	OAuthReady      = "ready"
+	OAuthError      = "error"
+	OAuthConsumed   = "consumed"
+)
+
 type Account struct {
 	ID                  string
 	Email               string
-	PasswordHash        string
+	PasswordHash        string // empty when the account has no password (Google-only)
+	GoogleSub           string // Google "sub"; empty until Google sign-in links the account
 	CreatedAt           time.Time
 	FailedLoginAttempts int
 	LockedUntil         *time.Time
+}
+
+// OAuthLogin is one in-progress Google sign-in. The code verifier never
+// leaves the server. The poll secret is stored only as a SHA-256 hash.
+type OAuthLogin struct {
+	State          string
+	CodeVerifier   string
+	Nonce          string
+	DeviceName     string
+	PollSecretHash string
+	CreatedAt      time.Time
+	ExpiresAt      time.Time
+	Status         string
+	AccountID      string
+	ErrorCode      string
+	ErrorMessage   string
 }
 
 type Device struct {

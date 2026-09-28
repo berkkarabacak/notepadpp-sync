@@ -4,8 +4,10 @@ package config
 
 import (
 	"fmt"
+	"net/url"
 	"os"
 	"strconv"
+	"strings"
 	"time"
 )
 
@@ -36,6 +38,17 @@ type Config struct {
 	LoginRatePerMin   int
 	LoginLockoutAfter int
 	LoginLockoutFor   time.Duration
+
+	// Google OAuth/OIDC. Empty client ID and secret disables Google sign-in.
+	// The server is the confidential client (Authorization Code + PKCE).
+	// Endpoint URLs default to Google and exist so tests can point at a fake IdP.
+	GoogleClientID     string
+	GoogleClientSecret string
+	GoogleRedirectURI  string
+	GoogleAuthURL      string
+	GoogleTokenURL     string
+	GoogleJWKSURL      string
+	GoogleIssuer       string
 }
 
 func env(key, def string) string {
@@ -72,27 +85,34 @@ func envInt64(key string, def int64) int64 {
 // Load reads configuration from the environment and validates it.
 func Load() (*Config, error) {
 	c := &Config{
-		ListenAddr:        env("NPSYNC_LISTEN_ADDR", ":8080"),
-		DatabaseURL:       env("NPSYNC_DATABASE_URL", "postgres://npsync:npsync_dev_password@localhost:5432/npsync_dev?sslmode=disable"),
-		BaseURL:           env("NPSYNC_BASE_URL", "http://localhost:8080"),
-		RequireHTTPS:      envBool("NPSYNC_REQUIRE_HTTPS", false),
-		RegistrationOpen:  envBool("NPSYNC_REGISTRATION_OPEN", true),
-		AccessTokenTTL:    15 * time.Minute,
-		RefreshTokenTTL:   90 * 24 * time.Hour,
-		BlobBackend:       env("NPSYNC_BLOB_BACKEND", "fs"),
-		BlobFSDir:         env("NPSYNC_BLOB_FS_DIR", "data/blobs"),
-		S3Endpoint:        env("NPSYNC_S3_ENDPOINT", ""),
-		S3Bucket:          env("NPSYNC_S3_BUCKET", ""),
-		S3Region:          env("NPSYNC_S3_REGION", "auto"),
-		S3AccessKey:       env("NPSYNC_S3_ACCESS_KEY", ""),
-		S3SecretKey:       env("NPSYNC_S3_SECRET_KEY", ""),
-		MaxFileBytes:      envInt64("NPSYNC_MAX_FILE_BYTES", 100<<20),
-		MaxBatchBytes:     envInt64("NPSYNC_MAX_BATCH_BYTES", 250<<20),
-		MaxDevices:        int(envInt64("NPSYNC_MAX_DEVICES", 10)),
-		VersionRetention:  int(envInt64("NPSYNC_VERSION_RETENTION", 30)),
-		LoginRatePerMin:   int(envInt64("NPSYNC_LOGIN_RATE_PER_MIN", 10)),
-		LoginLockoutAfter: int(envInt64("NPSYNC_LOGIN_LOCKOUT_AFTER", 8)),
-		LoginLockoutFor:   15 * time.Minute,
+		ListenAddr:         env("NPSYNC_LISTEN_ADDR", ":8080"),
+		DatabaseURL:        env("NPSYNC_DATABASE_URL", "postgres://npsync:npsync_dev_password@localhost:5432/npsync_dev?sslmode=disable"),
+		BaseURL:            env("NPSYNC_BASE_URL", "http://localhost:8080"),
+		RequireHTTPS:       envBool("NPSYNC_REQUIRE_HTTPS", false),
+		RegistrationOpen:   envBool("NPSYNC_REGISTRATION_OPEN", true),
+		AccessTokenTTL:     15 * time.Minute,
+		RefreshTokenTTL:    90 * 24 * time.Hour,
+		BlobBackend:        env("NPSYNC_BLOB_BACKEND", "fs"),
+		BlobFSDir:          env("NPSYNC_BLOB_FS_DIR", "data/blobs"),
+		S3Endpoint:         env("NPSYNC_S3_ENDPOINT", ""),
+		S3Bucket:           env("NPSYNC_S3_BUCKET", ""),
+		S3Region:           env("NPSYNC_S3_REGION", "auto"),
+		S3AccessKey:        env("NPSYNC_S3_ACCESS_KEY", ""),
+		S3SecretKey:        env("NPSYNC_S3_SECRET_KEY", ""),
+		MaxFileBytes:       envInt64("NPSYNC_MAX_FILE_BYTES", 100<<20),
+		MaxBatchBytes:      envInt64("NPSYNC_MAX_BATCH_BYTES", 250<<20),
+		MaxDevices:         int(envInt64("NPSYNC_MAX_DEVICES", 10)),
+		VersionRetention:   int(envInt64("NPSYNC_VERSION_RETENTION", 30)),
+		LoginRatePerMin:    int(envInt64("NPSYNC_LOGIN_RATE_PER_MIN", 10)),
+		LoginLockoutAfter:  int(envInt64("NPSYNC_LOGIN_LOCKOUT_AFTER", 8)),
+		LoginLockoutFor:    15 * time.Minute,
+		GoogleClientID:     env("NPSYNC_GOOGLE_CLIENT_ID", ""),
+		GoogleClientSecret: env("NPSYNC_GOOGLE_CLIENT_SECRET", ""),
+		GoogleRedirectURI:  env("NPSYNC_GOOGLE_REDIRECT_URI", ""),
+		GoogleAuthURL:      env("NPSYNC_GOOGLE_AUTH_URL", "https://accounts.google.com/o/oauth2/v2/auth"),
+		GoogleTokenURL:     env("NPSYNC_GOOGLE_TOKEN_URL", "https://oauth2.googleapis.com/token"),
+		GoogleJWKSURL:      env("NPSYNC_GOOGLE_JWKS_URL", "https://www.googleapis.com/oauth2/v3/certs"),
+		GoogleIssuer:       env("NPSYNC_GOOGLE_ISSUER", "https://accounts.google.com"),
 	}
 
 	keyHex := env("NPSYNC_TOKEN_SIGNING_KEY", "")
@@ -109,6 +129,22 @@ func Load() (*Config, error) {
 	}
 	c.TokenSigningKey = key
 
+	if (c.GoogleClientID == "") != (c.GoogleClientSecret == "") {
+		return nil, fmt.Errorf("NPSYNC_GOOGLE_CLIENT_ID and NPSYNC_GOOGLE_CLIENT_SECRET must both be set (or both left empty)")
+	}
+	if c.GoogleEnabled() {
+		redir := c.GoogleRedirectURIOrDefault()
+		u, err := url.Parse(redir)
+		if err != nil || u.Host == "" || (u.Scheme != "https" && u.Scheme != "http") {
+			return nil, fmt.Errorf("Google redirect URI must be an absolute http(s) URL")
+		}
+		host := u.Hostname()
+		local := host == "localhost" || host == "127.0.0.1" || host == "::1"
+		if c.RequireHTTPS && u.Scheme != "https" && !local {
+			return nil, fmt.Errorf("Google redirect URI must be https when NPSYNC_REQUIRE_HTTPS is set")
+		}
+	}
+
 	switch c.BlobBackend {
 	case "fs":
 	case "s3":
@@ -119,6 +155,20 @@ func Load() (*Config, error) {
 		return nil, fmt.Errorf("unknown NPSYNC_BLOB_BACKEND %q (want fs|s3)", c.BlobBackend)
 	}
 	return c, nil
+}
+
+// GoogleEnabled reports whether Google sign-in is configured.
+func (c *Config) GoogleEnabled() bool {
+	return c.GoogleClientID != "" && c.GoogleClientSecret != ""
+}
+
+// GoogleRedirectURIOrDefault is the browser redirect target registered in
+// the Google Cloud console. It defaults to {BaseURL}/auth/google/callback.
+func (c *Config) GoogleRedirectURIOrDefault() string {
+	if c.GoogleRedirectURI != "" {
+		return c.GoogleRedirectURI
+	}
+	return strings.TrimRight(c.BaseURL, "/") + "/auth/google/callback"
 }
 
 func decodeHex(s string) ([]byte, error) {

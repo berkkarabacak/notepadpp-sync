@@ -44,7 +44,7 @@ disk work happens off the Notepad++ UI thread.
 | `cmd/server` | Entry point, embedded migrations, graceful shutdown |
 | `internal/config` | Env-based config, all limits tunable |
 | `internal/api` | REST + WS handlers, auth middleware, rate limiting |
-| `internal/auth` | Argon2id, access tokens (HS256), opaque refresh tokens |
+| `internal/auth` | Argon2id, access tokens (HS256), opaque refresh tokens, Google ID-token (RS256) checks |
 | `internal/store` | Store interface; Postgres impl + in-memory impl for tests |
 | `internal/blob` | Blob storage interface; filesystem + S3-compatible impls |
 | `internal/ws` | WebSocket hub, per-account fan-out |
@@ -77,8 +77,10 @@ conflict table, UI resolution (Keep Local/Remote/Both).
 
 ## Storage
 
-- PostgreSQL: accounts, devices, tokens, file heads, version history,
-  change feed, idempotency keys, pairing codes, sessions.
+- PostgreSQL: accounts (optional Google subject), devices, tokens, file heads,
+  version history, change feed, idempotency keys, pairing codes, sessions,
+  short-lived Google login sessions (`oauth_logins`; NPSync tokens are not
+  stored there).
 - Blobs: content-addressed by ciphertext SHA-256 (`<ab>/<cd>/<hash>`),
   atomic temp+rename writes; pluggable backend (fs now, S3/R2/MinIO via the
   same interface).

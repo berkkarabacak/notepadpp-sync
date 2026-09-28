@@ -151,6 +151,14 @@ func (s *Server) handleLogin(w http.ResponseWriter, r *http.Request) {
 		apperr.Write(w, apperr.RateLimited("account temporarily locked due to failed logins"))
 		return
 	}
+	if acct.PasswordHash == "" {
+		// Google-only accounts have no password. Run a dummy verify so the
+		// response time matches a real check, and do not record a failed
+		// login — that lockout is for passwords and must not block Google.
+		_, _ = auth.VerifyPassword(dummyHash, req.Password)
+		apperr.Write(w, apperr.ErrUnauthorized)
+		return
+	}
 	ok, err := auth.VerifyPassword(acct.PasswordHash, req.Password)
 	if err != nil || !ok {
 		if _, uerr := s.st.RecordFailedLogin(r.Context(), acct.ID, s.cfg.LoginLockoutAfter, s.cfg.LoginLockoutFor); uerr != nil {
