@@ -14,7 +14,7 @@ Notepad++ Sync is a native Notepad++ plugin plus a small self-hostable backend. 
 ## Features
 
 - **Native Notepad++ plugin** (C++, official plugin architecture) — menu under *Plugins → Notepad++ Sync*.
-- **End-to-end encryption** — files are encrypted on your device with XChaCha20-Poly1305 (AES-256-GCM available) *before* upload. The server only ever stores opaque blobs. Filenames and paths are encrypted too.
+- **End-to-end encryption** — files are encrypted on your device with AES-256-GCM *before* upload. The server only ever stores opaque blobs. Filenames and paths are encrypted too.
 - **Realtime sync** — WebSocket push notifications, with automatic fallback to periodic polling when the socket drops.
 - **Real conflict handling** — never naïve last-write-wins. Divergent edits are detected by explicit version tracking (not timestamps), auto-merged with a three-way text merge when safe, and surfaced in a conflict UI otherwise. Nothing is silently discarded.
 - **Offline-first** — full functionality without connectivity; changes queue locally in SQLite and reconcile on reconnect, surviving restarts and crashes.
@@ -48,10 +48,12 @@ See the [User Guide](docs/user-guide.md) for details and screenshots.
 ```bash
 git clone https://github.com/berkkarabacak/notepadpp-sync.git
 cd notepadpp-sync
+cp .env.example .env
+# set POSTGRES_PASSWORD, TOKEN_SIGNING_KEY, and BASE_URL
 docker compose up -d
 ```
 
-Then set the plugin's *Settings → Advanced → Backend URL* to `https://sync.myserver.com`. See [Self-hosting](docs/self-hosting.md).
+For a laptop demo, `BASE_URL=http://localhost:8080` and the plugin Backend URL is the same. Optional Google sign-in uses `GOOGLE_CLIENT_ID`, `GOOGLE_CLIENT_SECRET`, and `GOOGLE_REDIRECT_URI`. See [Self-hosting](docs/self-hosting.md).
 
 ## Basic usage
 
@@ -74,7 +76,7 @@ A small status indicator shows `Synced`, `Syncing`, `Offline`, `Conflict`, or `E
 ## Security model (summary)
 
 - **Auth and encryption are separate.** Google sign-in (and email/password, where you still use it) only authenticates the account. File encryption uses a master key generated locally on first setup; the server never sees it, your Google tokens, your password, or your recovery key. A new device still needs pairing or the recovery key.
-- Files are encrypted client-side with XChaCha20-Poly1305; metadata (names, paths) is encrypted as well. The server stores account IDs, opaque file IDs, ciphertext, sizes, and version vectors only.
+- Files are encrypted client-side with AES-256-GCM; metadata (names, paths) is encrypted as well. The server stores account IDs, opaque file IDs, ciphertext, sizes, and version vectors only.
 - Access tokens expire; refresh tokens are revocable per device. Login endpoints are rate-limited with brute-force protection.
 - Losing **all** devices **and** the recovery key means your encrypted data is unrecoverable — there is deliberately no server-side password reset that can decrypt your files.
 
@@ -84,7 +86,7 @@ Full details: [Security model](docs/security-model.md) and [SECURITY.md](SECURIT
 
 ```
 notepadpp-sync/
-├── plugin/      Native Notepad++ plugin (C++17, CMake, WinHTTP, SQLite, CNG/libsodium)
+├── plugin/      Native Notepad++ plugin (C++17, CMake, WinHTTP, SQLite, Windows CNG)
 ├── server/      Sync backend (Go, PostgreSQL, WebSocket, pluggable blob storage)
 ├── protocol/    Versioned wire protocol schemas and docs (X-NPSync-Protocol: 1)
 ├── installer/   Packaging scripts (ZIP + NSIS)
@@ -110,7 +112,7 @@ go build ./cmd/server
 go test ./...
 ```
 
-Requires Go 1.22+. Local dependencies (PostgreSQL) via:
+Requires Go 1.25 (see `server/go.mod`). Local dependencies (PostgreSQL) via:
 
 ```bash
 docker compose -f docker-compose.dev.yml up -d
@@ -125,7 +127,7 @@ cmake --build build --config Release
 ctest --test-dir build -C Release
 ```
 
-Requires Windows, MSVC (Visual Studio 2022), CMake ≥ 3.20. Dependencies (SQLite, nlohmann/json, libsodium) are fetched automatically by CMake.
+Requires Windows, MSVC (Visual Studio 2022), CMake ≥ 3.20. Dependencies (SQLite, nlohmann/json) are fetched automatically by CMake. Encryption uses Windows CNG (AES-256-GCM); libsodium is not a dependency.
 
 See [Developer docs](docs/developer.md).
 

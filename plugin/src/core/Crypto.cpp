@@ -9,6 +9,7 @@
 
 #include <cctype>
 #include <cstring>
+#include <optional>
 #include <stdexcept>
 
 #pragma comment(lib, "bcrypt.lib")
@@ -61,8 +62,8 @@ Bytes Crypto::generateMasterKey() {
     return random(kMasterKeyLen);
 }
 
-Bytes Crypto::aesGcmCrypt(bool encrypting, const Bytes& key, const Bytes& nonce, const Bytes& input,
-                          const std::string& aad, Bytes& tagOut) {
+std::optional<Bytes> Crypto::aesGcmCrypt(bool encrypting, const Bytes& key, const Bytes& nonce,
+                                         const Bytes& input, const std::string& aad, Bytes& tagOut) {
     if (key.size() != kMasterKeyLen || nonce.size() != kGcmNonceLen)
         throw std::invalid_argument("bad key/nonce size");
     if (!encrypting && tagOut.size() != kGcmTagLen)
@@ -90,21 +91,25 @@ Bytes Crypto::aesGcmCrypt(bool encrypting, const Bytes& key, const Bytes& nonce,
     info.pbTag = tagPtr;
     info.cbTag = kGcmTagLen;
 
-    Bytes out(input.size());
+    // CNG rejects a null buffer even when the length is zero. Keep a dummy
+    // byte so empty plaintext still produces (and checks) an auth tag.
+    uint8_t emptyByte = 0;
+    PUCHAR inPtr = input.empty() ? &emptyByte : const_cast<PUCHAR>(input.data());
+    Bytes out(input.empty() ? 1 : input.size());
     ULONG produced = 0;
     NTSTATUS st;
     if (encrypting) {
-        st = BCryptEncrypt(kh, const_cast<PUCHAR>(input.data()), static_cast<ULONG>(input.size()), &info,
-                           nullptr, 0, out.data(), static_cast<ULONG>(out.size()), &produced, 0);
+        st = BCryptEncrypt(kh, inPtr, static_cast<ULONG>(input.size()), &info, nullptr, 0, out.data(),
+                           static_cast<ULONG>(out.size()), &produced, 0);
     }
     else {
-        st = BCryptDecrypt(kh, const_cast<PUCHAR>(input.data()), static_cast<ULONG>(input.size()), &info,
-                           nullptr, 0, out.data(), static_cast<ULONG>(out.size()), &produced, 0);
+        st = BCryptDecrypt(kh, inPtr, static_cast<ULONG>(input.size()), &info, nullptr, 0, out.data(),
+                           static_cast<ULONG>(out.size()), &produced, 0);
     }
     BCryptDestroyKey(kh);
     if (st != 0) {
         if (!encrypting)
-            return {}; // auth failure -> empty
+            return std::nullopt; // auth failure, distinct from empty plaintext
         throw std::runtime_error("BCryptEncrypt failed");
     }
     out.resize(produced);
@@ -116,15 +121,17 @@ Bytes Crypto::aesGcmCrypt(bool encrypting, const Bytes& key, const Bytes& nonce,
 Bytes Crypto::encrypt(const Bytes& key, const Bytes& plaintext, const std::string& aad) {
     Bytes nonce = random(kGcmNonceLen);
     Bytes tag;
-    Bytes ct = aesGcmCrypt(true, key, nonce, plaintext, aad, tag);
+    auto ct = aesGcmCrypt(true, key, nonce, plaintext, aad, tag);
+    if (!ct)
+        throw std::runtime_error("BCryptEncrypt failed");
 
     Bytes env;
-    env.reserve(4 + 1 + kGcmNonceLen + kGcmTagLen + ct.size());
+    env.reserve(4 + 1 + kGcmNonceLen + kGcmTagLen + ct->size());
     env.insert(env.end(), std::begin(kEnvelopeMagic), std::end(kEnvelopeMagic));
     env.push_back(kAlgAes256Gcm);
     env.insert(env.end(), nonce.begin(), nonce.end());
     env.insert(env.end(), tag.begin(), tag.end());
-    env.insert(env.end(), ct.begin(), ct.end());
+    env.insert(env.end(), ct->begin(), ct->end());
     return env;
 }
 
@@ -141,10 +148,10 @@ bool Crypto::decrypt(const Bytes& key, const Bytes& envelope, const std::string&
     Bytes tag(envelope.begin() + 5 + kGcmNonceLen, envelope.begin() + headerLen);
     Bytes ct(envelope.begin() + headerLen, envelope.end());
 
-    Bytes out = aesGcmCrypt(false, key, nonce, ct, aad, tag);
-    if (out.empty() && !ct.empty())
+    auto out = aesGcmCrypt(false, key, nonce, ct, aad, tag);
+    if (!out)
         return false;
-    plaintextOut = std::move(out);
+    plaintextOut = std::move(*out);
     return true;
 }
 
@@ -261,7 +268,9 @@ bool Crypto::base64UrlDecode(const std::string& in, Bytes& out) {
 }
 
 std::string Crypto::generateRecoveryKey() {
-    Bytes raw = random(20);                                          // one byte per character
+    // 32 symbols, and 256 is divisible by 32, so raw[i] % 32 is uniform.
+    // 20 × 5 bits = 100 bits. The displayed form stays NPSYNC- plus five groups.
+    Bytes raw = random(20);
     static const char* alphabet = "ABCDEFGHJKMNPQRSTUVWXYZ23456789"; // no 0O1IL
     std::string out = "NPSYNC-";
     for (size_t i = 0; i < 20; ++i) {

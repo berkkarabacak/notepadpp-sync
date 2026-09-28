@@ -167,7 +167,7 @@ On reconnect the client catches up with `GET /sync/changes?since=<last_seq>`.
 1. New device B: `POST /devices/pair {"action":"request"}` → `{pairing_code, expires_at}`.
 2. Existing device A: user types the code;
    `POST /devices/pair {"action":"approve","pairing_code":…,"wrapped_master_key":…, "for_device_id":…}`.
-   `wrapped_master_key` is the account master key re-encrypted (XChaCha20-Poly1305)
+   `wrapped_master_key` is the account master key re-encrypted (AES-256-GCM)
    to a key derived from the pairing code — the server relays it opaquely.
 3. Device B polls `POST /devices/pair {"action":"poll","pairing_code":…}` →
    receives `wrapped_master_key`, unwraps locally.

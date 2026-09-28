@@ -52,6 +52,27 @@ void testCryptoRoundTrip() {
     CHECK(!Crypto::decrypt(key, bad, "file", out4));
 }
 
+void testEmptyCiphertextAuth() {
+    Bytes key = Crypto::generateMasterKey();
+    // Empty plaintext is a real payload: the tag still has to match.
+    Bytes env = Crypto::encrypt(key, Bytes{}, "file");
+    const size_t headerLen = 4 + 1 + 12 + 16;
+    CHECK(env.size() == headerLen);
+    Bytes out;
+    CHECK(Crypto::decrypt(key, env, "file", out));
+    CHECK(out.empty());
+
+    // A header with an empty ciphertext and a flipped tag used to decrypt
+    // as success, because auth failure and empty plaintext both looked empty.
+    Bytes forged = env;
+    forged[5 + 12] ^= 0xff; // first tag byte
+    Bytes leftover = {0xab};
+    CHECK(!Crypto::decrypt(key, forged, "file", leftover));
+
+    Bytes truncated(env.begin(), env.begin() + 8);
+    CHECK(!Crypto::decrypt(key, truncated, "file", leftover));
+}
+
 void testKeyWrap() {
     Bytes mk = Crypto::generateMasterKey();
     Bytes salt = Crypto::random(16);
@@ -247,6 +268,7 @@ void testVersionVectors() {
 
 int main() {
     testCryptoRoundTrip();
+    testEmptyCiphertextAuth();
     testKeyWrap();
     testRecoveryKey();
     testSha256();

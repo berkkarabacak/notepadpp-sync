@@ -4,6 +4,7 @@ package config
 
 import (
 	"fmt"
+	"net/netip"
 	"net/url"
 	"os"
 	"strconv"
@@ -49,6 +50,11 @@ type Config struct {
 	GoogleTokenURL     string
 	GoogleJWKSURL      string
 	GoogleIssuer       string
+
+	// TrustedProxies are the reverse proxies allowed to supply the client
+	// address via X-Forwarded-For. Empty means the header is ignored and
+	// login rate limits use the direct connection.
+	TrustedProxies []netip.Prefix
 }
 
 func env(key, def string) string {
@@ -114,6 +120,11 @@ func Load() (*Config, error) {
 		GoogleJWKSURL:      env("NPSYNC_GOOGLE_JWKS_URL", "https://www.googleapis.com/oauth2/v3/certs"),
 		GoogleIssuer:       env("NPSYNC_GOOGLE_ISSUER", "https://accounts.google.com"),
 	}
+	proxies, err := ParseTrustedProxies(env("NPSYNC_TRUSTED_PROXIES", ""))
+	if err != nil {
+		return nil, err
+	}
+	c.TrustedProxies = proxies
 
 	keyHex := env("NPSYNC_TOKEN_SIGNING_KEY", "")
 	if keyHex == "" {
@@ -183,6 +194,38 @@ func decodeHex(s string) ([]byte, error) {
 			return nil, fmt.Errorf("invalid hex")
 		}
 		out[i] = hi<<4 | lo
+	}
+	return out, nil
+}
+
+// ParseTrustedProxies parses a comma-separated list of IPs or CIDRs.
+// A bare IP is treated as a single host (/32 or /128). An empty string
+// yields no trusted proxies.
+func ParseTrustedProxies(raw string) ([]netip.Prefix, error) {
+	raw = strings.TrimSpace(raw)
+	if raw == "" {
+		return nil, nil
+	}
+	var out []netip.Prefix
+	for _, part := range strings.Split(raw, ",") {
+		part = strings.TrimSpace(part)
+		if part == "" {
+			continue
+		}
+		if strings.Contains(part, "/") {
+			p, err := netip.ParsePrefix(part)
+			if err != nil {
+				return nil, fmt.Errorf("NPSYNC_TRUSTED_PROXIES: %q: %w", part, err)
+			}
+			out = append(out, p.Masked())
+			continue
+		}
+		addr, err := netip.ParseAddr(part)
+		if err != nil {
+			return nil, fmt.Errorf("NPSYNC_TRUSTED_PROXIES: %q: %w", part, err)
+		}
+		bits := addr.BitLen()
+		out = append(out, netip.PrefixFrom(addr, bits).Masked())
 	}
 	return out, nil
 }

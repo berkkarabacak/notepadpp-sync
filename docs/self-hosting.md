@@ -4,13 +4,42 @@ The whole backend is two containers: the Go API server and PostgreSQL.
 No external object storage is required (blobs live in a Docker volume by
 default; S3/R2/MinIO is supported if you want it).
 
+## Investor demo (one laptop)
+
+This is the short path. It does not need a domain or TLS.
+
+```bash
+git clone https://github.com/berkkarabacak/notepadpp-sync.git
+cd notepadpp-sync
+cp .env.example .env
+```
+
+Edit `.env`:
+
+| Variable | Demo value |
+|----------|------------|
+| `POSTGRES_PASSWORD` | a long random string |
+| `TOKEN_SIGNING_KEY` | `openssl rand -hex 32` (64 hex characters) |
+| `BASE_URL` | `http://localhost:8080` |
+
+`BASE_URL` is the URL the server puts in device-pairing payloads and the URL you type into the plugin (*Settings → Advanced → Backend URL*). For this demo they are the same.
+
+```bash
+docker compose up -d --build
+curl -fsS http://localhost:8080/health
+```
+
+Compose sets `NPSYNC_REQUIRE_HTTPS=true`. That only rejects requests that arrive with `X-Forwarded-Proto: http`. A direct `curl` to localhost, and the plugin talking to `http://localhost:8080` with no proxy, are accepted. Put a TLS proxy in front before exposing the port beyond the laptop, and then set `BASE_URL` to the `https://` URL.
+
+Optional Google sign-in: set `GOOGLE_CLIENT_ID` and `GOOGLE_CLIENT_SECRET`. `GOOGLE_REDIRECT_URI` defaults to `${BASE_URL}/auth/google/callback` (`http://localhost:8080/auth/google/callback` for this demo, which Google allows on localhost). Leave both credentials empty and the server keeps email and password only. The console steps are under [Google sign-in](#google-sign-in).
+
 ## Quick start
 
 ```bash
 git clone https://github.com/berkkarabacak/notepadpp-sync.git
 cd notepadpp-sync
 cp .env.example .env
-# edit .env: set POSTGRES_PASSWORD and TOKEN_SIGNING_KEY (openssl rand -hex 32)
+# edit .env: set POSTGRES_PASSWORD, TOKEN_SIGNING_KEY (openssl rand -hex 32), and BASE_URL
 docker compose up -d
 ```
 
@@ -36,6 +65,7 @@ All limits and behaviors are environment variables (see `.env.example`):
 | Variable | Default | Meaning |
 |----------|---------|---------|
 | `NPSYNC_LISTEN_ADDR` | `:8080` | bind address |
+| `NPSYNC_BASE_URL` | `http://localhost:8080` | public URL (`BASE_URL` in compose) |
 | `NPSYNC_DATABASE_URL` | — | PostgreSQL DSN |
 | `NPSYNC_TOKEN_SIGNING_KEY` | — (required) | 64 hex chars; signs access tokens |
 | `NPSYNC_REQUIRE_HTTPS` | `false` | reject non-HTTPS in production |
@@ -47,6 +77,7 @@ All limits and behaviors are environment variables (see `.env.example`):
 | `NPSYNC_MAX_DEVICES` | `10` | devices per account |
 | `NPSYNC_VERSION_RETENTION` | `30` | versions kept per file |
 | `NPSYNC_REGISTRATION_OPEN` | `true` | close to make the server invite-only |
+| `NPSYNC_TRUSTED_PROXIES` | empty | comma-separated IPs or CIDRs allowed to set the client address via `X-Forwarded-For`. Empty ignores the header. |
 | `NPSYNC_GOOGLE_CLIENT_ID` | empty | Google OAuth client ID. Empty disables Google sign-in. |
 | `NPSYNC_GOOGLE_CLIENT_SECRET` | empty | Google OAuth client secret. Set together with the client ID. |
 | `NPSYNC_GOOGLE_REDIRECT_URI` | `{NPSYNC_BASE_URL}/auth/google/callback` | Must match the URI registered in Google Cloud. |
@@ -109,6 +140,26 @@ sync.myserver.com {
 
 WebSockets (`/ws`) work through standard reverse proxies without extra
 configuration (they are ordinary HTTP Upgrade requests).
+
+### Client IP for login rate limits
+
+Login rate limits use the TCP peer the server actually accepted. A client
+can set `X-Forwarded-For` to anything, so the header is ignored unless that
+peer is listed in `NPSYNC_TRUSTED_PROXIES` (an IP or CIDR, comma-separated).
+Map it in compose as `TRUSTED_PROXIES`.
+
+When the peer is trusted, the client address is the rightmost forwarded hop
+that is not itself a trusted proxy — the address your proxy appended. A
+spoofed value the browser stuck on the front of the header does not become
+the rate-limit key.
+
+The proxy must **set or append** `X-Forwarded-For` from the connection it
+accepted, not blindly forward the client's copy. Caddy's `reverse_proxy`
+and nginx `proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;`
+do that. For a single proxy, `TRUSTED_PROXIES` is the proxy's address as
+the server sees it (often a Docker bridge CIDR such as `172.16.0.0/12`,
+not the public IP of the proxy). Leave it empty for the laptop demo above:
+there is no proxy, and localhost is the client.
 
 ## Backups
 

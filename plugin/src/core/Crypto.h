@@ -1,10 +1,10 @@
 // Crypto.h — client-side encryption for Notepad++ Sync.
 //
 // All encryption happens locally in the plugin. The server only ever sees
-// ciphertext. Default cipher: AES-256-GCM via Windows CNG (BCrypt), an
-// authenticated AEAD construction from the platform crypto library — no
-// custom primitives. The layout leaves room for XChaCha20-Poly1305 via
-// libsodium as an alternative provider (see CMake option NPSYNC_WITH_SODIUM).
+// ciphertext. The only cipher implemented here is AES-256-GCM via Windows
+// CNG (BCrypt), an authenticated AEAD construction from the platform crypto
+// library — no custom primitives. The algorithm byte can name another AEAD
+// later; nothing in this tree implements XChaCha20-Poly1305 or libsodium.
 //
 // Envelope format (binary):
 //   magic   4 bytes   "NPS1"
@@ -15,6 +15,7 @@
 #pragma once
 
 #include <cstdint>
+#include <optional>
 #include <string>
 #include <vector>
 
@@ -61,13 +62,17 @@ class Crypto {
 
     // ---- recovery key ----
     // Human-storable offline recovery key: "NPSYNC-XXXX-XXXX-XXXX-XXXX-XXXX".
-    // Encodes 128 bits of entropy; derives a wrapping key for the master key.
+    // 20 symbols from a 32-character alphabet: 5 bits each, about 100 bits.
+    // It wraps the 32-byte master key; it is not itself 128 bits.
     static std::string generateRecoveryKey();
     static bool normalizeRecoveryKey(const std::string& in, std::string& normalizedOut);
 
   private:
-    static Bytes aesGcmCrypt(bool encrypting, const Bytes& key, const Bytes& nonce, const Bytes& input,
-                             const std::string& aad, Bytes& tagOut);
+    // nullopt is an authentication failure. An engaged empty buffer is a
+    // successful decrypt of empty plaintext, which must not be treated as
+    // failure.
+    static std::optional<Bytes> aesGcmCrypt(bool encrypting, const Bytes& key, const Bytes& nonce,
+                                            const Bytes& input, const std::string& aad, Bytes& tagOut);
 };
 
 } // namespace npsync

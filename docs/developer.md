@@ -4,7 +4,7 @@
 
 | Component | Requirements |
 |-----------|--------------|
-| Server | Go 1.22+, Docker (for local PostgreSQL) |
+| Server | Go 1.25, Docker (for local PostgreSQL) |
 | Plugin | Windows, Visual Studio 2022 (MSVC), CMake ≥ 3.20 |
 
 ## Local development

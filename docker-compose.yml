@@ -41,6 +41,9 @@ services:
       NPSYNC_TOKEN_SIGNING_KEY: ${TOKEN_SIGNING_KEY:?Set TOKEN_SIGNING_KEY in .env (64 hex chars)}
       NPSYNC_REQUIRE_HTTPS: "true"
       NPSYNC_BASE_URL: ${BASE_URL:-https://sync.myserver.com}
+      # Empty unless this server sits behind a reverse proxy you control.
+      # See docs/self-hosting.md (client IP for login rate limits).
+      NPSYNC_TRUSTED_PROXIES: ${TRUSTED_PROXIES:-}
       NPSYNC_MAX_FILE_BYTES: ${MAX_FILE_BYTES:-104857600}
       NPSYNC_MAX_BATCH_BYTES: ${MAX_BATCH_BYTES:-262144000}
       NPSYNC_MAX_DEVICES: ${MAX_DEVICES:-10}

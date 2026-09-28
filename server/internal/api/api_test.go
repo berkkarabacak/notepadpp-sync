@@ -2,8 +2,10 @@ package api
 
 import (
 	"bytes"
+	"context"
 	"encoding/base64"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"io"
 	"net/http"
@@ -30,6 +32,10 @@ type testEnv struct {
 }
 
 func newTestEnv(t *testing.T) *testEnv {
+	return newTestEnvConfigured(t, nil, nil)
+}
+
+func newTestEnvConfigured(t *testing.T, tweak func(*config.Config), blobs blob.Store) *testEnv {
 	t.Helper()
 	cfg := &config.Config{
 		BaseURL:           "http://test",
@@ -45,9 +51,15 @@ func newTestEnv(t *testing.T) *testEnv {
 		LoginLockoutAfter: 3,
 		LoginLockoutFor:   time.Minute,
 	}
-	blobs, err := blob.NewFS(t.TempDir())
-	if err != nil {
-		t.Fatal(err)
+	if tweak != nil {
+		tweak(cfg)
+	}
+	if blobs == nil {
+		var err error
+		blobs, err = blob.NewFS(t.TempDir())
+		if err != nil {
+			t.Fatal(err)
+		}
 	}
 	uuidN := 0
 	st := store.NewMem(func() string {
@@ -523,6 +535,227 @@ func TestPairingFlow(t *testing.T) {
 	})
 	if r.StatusCode != http.StatusGone {
 		t.Fatalf("consumed code still pollar: %d", r.StatusCode)
+	}
+}
+
+// putFailBlob fails Put after succeedPuts successful writes. Get/Delete
+// pass through so a committed record can still be downloaded.
+type putFailBlob struct {
+	inner       blob.Store
+	succeedPuts int
+	puts        int
+}
+
+func (p *putFailBlob) Put(ctx context.Context, key string, r io.Reader, size int64) error {
+	if p.puts >= p.succeedPuts {
+		return errors.New("injected blob put failure")
+	}
+	p.puts++
+	return p.inner.Put(ctx, key, r, size)
+}
+
+func (p *putFailBlob) Get(ctx context.Context, key string) (io.ReadCloser, int64, error) {
+	return p.inner.Get(ctx, key)
+}
+
+func (p *putFailBlob) Delete(ctx context.Context, key string) error {
+	return p.inner.Delete(ctx, key)
+}
+
+func batchFile(c *testClient, fileID, seed string, baseVersion int) fileJSON {
+	b64, hash, size := fakeCipher(seed)
+	return fileJSON{
+		FileID:            fileID,
+		EncryptedMetadata: base64.RawURLEncoding.EncodeToString([]byte(`{"relative_path":"notes.txt"}`)),
+		EncryptedContent:  b64,
+		ContentHash:       hash,
+		BaseVersion:       baseVersion,
+		VersionVector:     map[string]int{c.DeviceID: baseVersion + 1},
+		Size:              size,
+		ModifiedAt:        time.Now().UTC(),
+	}
+}
+
+func listedFileIDs(t *testing.T, c *testClient) []string {
+	t.Helper()
+	resp := c.authed("GET", "/sync/files", nil)
+	if resp.StatusCode != http.StatusOK {
+		t.Fatalf("list: %d %s", resp.StatusCode, resp.body)
+	}
+	var list struct {
+		Files []fileJSON `json:"files"`
+	}
+	mustJSON(t, resp.body, &list)
+	ids := make([]string, 0, len(list.Files))
+	for _, f := range list.Files {
+		ids = append(ids, f.FileID)
+	}
+	return ids
+}
+
+// TestBatchUploadDoesNotPublishMetadataWithoutBlob is the ordering
+// invariant: a blob write failure must not leave a head that other
+// clients can see. Single-file PUT already stores the blob first.
+func TestBatchUploadDoesNotPublishMetadataWithoutBlob(t *testing.T) {
+	fs, err := blob.NewFS(t.TempDir())
+	if err != nil {
+		t.Fatal(err)
+	}
+	// First Put (the existing file's create, via POST) succeeds. The batch
+	// update and the new file's Put fail.
+	flaky := &putFailBlob{inner: fs, succeedPuts: 1}
+	env := newTestEnvConfigured(t, nil, flaky)
+	c := env.newClient("batch@example.com", "passw0rd-123", "A")
+
+	existing := auth.NewUUID()
+	if r := c.createFile(existing, "already-stored"); r.StatusCode != http.StatusCreated {
+		t.Fatalf("create: %d %s", r.StatusCode, r.body)
+	}
+	oldB64, _, _ := fakeCipher("already-stored")
+
+	fresh := auth.NewUUID()
+	body := map[string]any{
+		"uploads": []fileJSON{
+			batchFile(c, existing, "replacement-missing-blob", 1),
+			batchFile(c, fresh, "never-stored", 0),
+		},
+	}
+	r := c.authed("POST", "/sync/batch", body)
+	if r.StatusCode != http.StatusOK {
+		t.Fatalf("batch: %d %s", r.StatusCode, r.body)
+	}
+	var batch struct {
+		Results []batchResultItem `json:"results"`
+	}
+	mustJSON(t, r.body, &batch)
+	if len(batch.Results) != 2 || batch.Results[0].OK || batch.Results[1].OK {
+		t.Fatalf("both uploads must fail closed: %s", r.body)
+	}
+	if batch.Results[0].Error != "internal" || batch.Results[1].Error != "internal" {
+		t.Fatalf("want internal errors, got %s", r.body)
+	}
+
+	ids := listedFileIDs(t, c)
+	if len(ids) != 1 || ids[0] != existing {
+		t.Fatalf("missing-blob upload became visible: %v", ids)
+	}
+	got := c.authed("GET", "/sync/files/"+existing, nil)
+	if got.StatusCode != http.StatusOK {
+		t.Fatalf("existing file: %d %s", got.StatusCode, got.body)
+	}
+	var rec fileJSON
+	mustJSON(t, got.body, &rec)
+	if rec.EncryptedContent != oldB64 || rec.Version != 1 {
+		t.Fatalf("head was replaced without a blob: version=%d", rec.Version)
+	}
+	missing := c.authed("GET", "/sync/files/"+fresh, nil)
+	if missing.StatusCode != http.StatusNotFound {
+		t.Fatalf("uncommitted file visible: %d %s", missing.StatusCode, missing.body)
+	}
+}
+
+func TestBatchUploadRoundTrip(t *testing.T) {
+	env := newTestEnv(t)
+	c := env.newClient("batchok@example.com", "passw0rd-123", "A")
+	fileID := auth.NewUUID()
+	r := c.authed("POST", "/sync/batch", map[string]any{
+		"uploads": []fileJSON{batchFile(c, fileID, "batch-v1", 0)},
+	})
+	if r.StatusCode != http.StatusOK {
+		t.Fatalf("batch: %d %s", r.StatusCode, r.body)
+	}
+	var batch struct {
+		Results []batchResultItem `json:"results"`
+	}
+	mustJSON(t, r.body, &batch)
+	if len(batch.Results) != 1 || !batch.Results[0].OK || batch.Results[0].Record == nil || batch.Results[0].Record.Version != 1 {
+		t.Fatalf("batch create: %s", r.body)
+	}
+	got := c.authed("GET", "/sync/files/"+fileID, nil)
+	if got.StatusCode != http.StatusOK {
+		t.Fatalf("get: %d %s", got.StatusCode, got.body)
+	}
+	var rec fileJSON
+	mustJSON(t, got.body, &rec)
+	b64, _, _ := fakeCipher("batch-v1")
+	if rec.EncryptedContent != b64 {
+		t.Fatal("batch upload committed metadata for a missing blob")
+	}
+}
+
+func TestLoginRateLimitIgnoresSpoofedForwardedFor(t *testing.T) {
+	env := newTestEnvConfigured(t, func(cfg *config.Config) {
+		cfg.LoginRatePerMin = 1
+		cfg.LoginLockoutAfter = 100
+	}, nil)
+	login := func(xff string) *httpResp {
+		req, err := http.NewRequest(http.MethodPost, env.server.URL+"/auth/login", strings.NewReader(
+			`{"email":"nobody@example.com","password":"passw0rd-123","device_name":"d"}`))
+		if err != nil {
+			t.Fatal(err)
+		}
+		req.Header.Set("Content-Type", "application/json")
+		req.Header.Set("X-NPSync-Protocol", "1")
+		req.Header.Set("X-Forwarded-For", xff)
+		resp, err := http.DefaultClient.Do(req)
+		if err != nil {
+			t.Fatal(err)
+		}
+		defer resp.Body.Close()
+		b, _ := io.ReadAll(resp.Body)
+		return &httpResp{StatusCode: resp.StatusCode, body: b, header: resp.Header}
+	}
+	// Unknown account still counts. A second attempt with a different
+	// client-supplied X-Forwarded-For must share the direct-connection bucket.
+	first := login("1.2.3.4")
+	if first.StatusCode != http.StatusUnauthorized {
+		t.Fatalf("first login: %d %s", first.StatusCode, first.body)
+	}
+	second := login("203.0.113.9")
+	if second.StatusCode != http.StatusTooManyRequests {
+		t.Fatalf("spoofed X-Forwarded-For bypassed the limit: %d %s", second.StatusCode, second.body)
+	}
+}
+
+func TestLoginRateLimitUsesForwardedForBehindTrustedProxy(t *testing.T) {
+	trusted, err := config.ParseTrustedProxies("127.0.0.1/32, ::1/128")
+	if err != nil {
+		t.Fatal(err)
+	}
+	env := newTestEnvConfigured(t, func(cfg *config.Config) {
+		cfg.LoginRatePerMin = 1
+		cfg.LoginLockoutAfter = 100
+		cfg.TrustedProxies = trusted
+	}, nil)
+	login := func(xff string) int {
+		t.Helper()
+		req, err := http.NewRequest(http.MethodPost, env.server.URL+"/auth/login", strings.NewReader(
+			`{"email":"proxy-limit@example.com","password":"passw0rd-123","device_name":"d"}`))
+		if err != nil {
+			t.Fatal(err)
+		}
+		req.Header.Set("Content-Type", "application/json")
+		req.Header.Set("X-NPSync-Protocol", "1")
+		req.Header.Set("X-Forwarded-For", xff)
+		resp, err := http.DefaultClient.Do(req)
+		if err != nil {
+			t.Fatal(err)
+		}
+		defer resp.Body.Close()
+		io.Copy(io.Discard, resp.Body)
+		return resp.StatusCode
+	}
+	// httptest dials 127.0.0.1 or ::1, both trusted above. Different
+	// rightmost client addresses are different buckets. A spoofed prefix
+	// does not change the bucket.
+	if login("9.9.9.9, 198.51.100.10") != http.StatusUnauthorized {
+		t.Fatal("expected the real client hop to be allowed once")
+	}
+	if login("198.51.100.10") != http.StatusTooManyRequests {
+		t.Fatal("same client behind the proxy was not limited")
+	}
+	if login("8.8.8.8, 198.51.100.20") != http.StatusUnauthorized {
+		t.Fatal("a different client behind the proxy should have its own bucket")
 	}
 }
 

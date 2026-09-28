@@ -4,7 +4,11 @@
 
 Please **do not** open a public GitHub issue for security vulnerabilities.
 
-Email security reports to: **security@example.com** (replace with the project security contact before publishing).
+Report them through GitHub private vulnerability reporting (Security Advisories):
+
+https://github.com/berkkarabacak/notepadpp-sync/security/advisories/new
+
+That form is **not enabled on this repository yet**. Turn it on under the repository settings (Code security → Private vulnerability reporting) before it will accept a report. There is no security email address configured. Do not invent one and do not mail a placeholder. When a real contact exists, replace this paragraph with it.
 
 Include:
 
@@ -28,8 +32,8 @@ Security fixes are applied to the latest release line only.
 ## Security model summary
 
 - All file contents and sensitive metadata (names, paths) are encrypted on the
-  client with XChaCha20-Poly1305 (AES-256-GCM also supported) before leaving
-  the device. The server stores ciphertext only.
+  client with AES-256-GCM (Windows CNG) before leaving the device. The server
+  stores ciphertext only.
 - Passwords are hashed with Argon2id. Google sign-in, when configured,
   checks a Google ID token and does not keep it. The master encryption key,
   recovery key, Google tokens, and plaintext passwords are never used as

@@ -15,6 +15,22 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   not configured Google. A verified Google email links to an existing
   password account without removing the password.
 
+### Fixed
+- Batch upload stores the ciphertext blob before committing file metadata,
+  matching single-file upload. A failed blob write no longer leaves a head
+  record other clients can see.
+- Empty ciphertext with a bad authentication tag no longer decrypts as
+  success. Empty plaintext still round-trips.
+- Login rate limits ignore `X-Forwarded-For` unless the direct peer is in
+  `NPSYNC_TRUSTED_PROXIES`.
+
+### Changed
+- Docs describe the cipher that ships: AES-256-GCM. The recovery key is
+  documented as about 100 bits (20 symbols from a 32-character alphabet).
+- Security reports go through GitHub private vulnerability reporting.
+  `security@example.com` is removed; no replacement address is invented.
+- The release workflow builds the server with Go 1.25, matching `go.mod`.
+
 ## [1.1.0] - 2026-09-02
 
 ### Added
