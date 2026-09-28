@@ -1,7 +1,9 @@
 name: Plugin CI
 
+# Check-only. Do not commit, rebase, or push from CI: pull_request
+# checkouts are detached merge refs, and rewriting them conflicts.
 permissions:
-  contents: write
+  contents: read
 
 on:
   workflow_dispatch:
@@ -33,18 +35,19 @@ jobs:
         run: cmake --build plugin/build --config Release --target NppSync -- /p:RunCodeAnalysis=true /p:CodeAnalysisRuleSet=NativeRecommendedRules.ruleset
         continue-on-error: true  # analysis is advisory until the rule set is tuned
 
-      - name: clang-format auto-fix
+      - name: Check clang-format
         shell: pwsh
         run: |
+          $dirty = @()
           Get-ChildItem -Recurse plugin/src,plugin/tests -Include *.cpp,*.h | ForEach-Object {
-            clang-format -i --style=file $_.FullName
+            & clang-format --dry-run --Werror --style=file $_.FullName
+            if ($LASTEXITCODE -ne 0) { $dirty += $_.FullName }
           }
-          git config user.name "npsync-ci"
-          git config user.email "ci@users.noreply.github.com"
-          git add -A
-          git diff --cached --quiet || git commit -m "style: apply clang-format"
-          git pull --rebase origin main
-          git push
+          if ($dirty.Count -gt 0) {
+            Write-Host "clang-format would change:"
+            $dirty | ForEach-Object { Write-Host $_ }
+            exit 1
+          }
 
       - name: Package artifact
         shell: pwsh
