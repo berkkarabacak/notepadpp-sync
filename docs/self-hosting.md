@@ -47,13 +47,57 @@ All limits and behaviors are environment variables (see `.env.example`):
 | `NPSYNC_MAX_DEVICES` | `10` | devices per account |
 | `NPSYNC_VERSION_RETENTION` | `30` | versions kept per file |
 | `NPSYNC_REGISTRATION_OPEN` | `true` | close to make the server invite-only |
+| `NPSYNC_GOOGLE_CLIENT_ID` | empty | Google OAuth client ID. Empty disables Google sign-in. |
+| `NPSYNC_GOOGLE_CLIENT_SECRET` | empty | Google OAuth client secret. Set together with the client ID. |
+| `NPSYNC_GOOGLE_REDIRECT_URI` | `{NPSYNC_BASE_URL}/auth/google/callback` | Must match the URI registered in Google Cloud. |
+
+Leave the Google variables empty to keep email/password only. In `.env` / Compose they are `GOOGLE_CLIENT_ID`, `GOOGLE_CLIENT_SECRET`, and `GOOGLE_REDIRECT_URI` (mapped onto the `NPSYNC_` names above). Do not commit real values.
+
+These exist so tests can point at a fake identity provider. Leave them unset in production:
+
+| Variable | Default |
+|----------|---------|
+| `NPSYNC_GOOGLE_AUTH_URL` | `https://accounts.google.com/o/oauth2/v2/auth` |
+| `NPSYNC_GOOGLE_TOKEN_URL` | `https://oauth2.googleapis.com/token` |
+| `NPSYNC_GOOGLE_JWKS_URL` | `https://www.googleapis.com/oauth2/v3/certs` |
+| `NPSYNC_GOOGLE_ISSUER` | `https://accounts.google.com` |
+
+## Google sign-in
+
+The plugin is a native Windows client, so it does not embed a client secret. The server is the OAuth client: Authorization Code with PKCE (S256). The plugin opens the system browser and polls the server until you finish in the browser. Google identity only signs the account in. Encryption keys stay on the device; a second computer still needs pairing or the recovery key.
+
+Use a **Web application** client, not a Desktop client. Google redirects to your server, not to a random localhost port on each PC.
+
+1. Open [Google Cloud Console → Credentials](https://console.cloud.google.com/apis/credentials) and pick or create a project.
+2. Configure the OAuth consent screen (APIs & Services → OAuth consent screen).
+   - User type **External**, unless this is a Google Workspace org and only people in that org will sign in (**Internal**).
+   - App name: `Notepad++ Sync` (or your own name). Set a support email and a developer contact email.
+   - Scopes: `openid`, `email`, and `profile` (the non-sensitive userinfo scopes). You do not need Drive or any other API.
+   - While the app is in **Testing**, every Google account that will sign in must be listed under **Test users**. Otherwise Google returns `access_denied`. Publishing the app removes that list. NPSync does not keep Google refresh tokens, so Google's 7-day testing-token limit does not apply to sync sessions.
+3. Create credentials → **OAuth client ID** → application type **Web application**.
+4. Authorized redirect URI: exactly `https://sync.myserver.com/auth/google/callback`, where `https://sync.myserver.com` is `NPSYNC_BASE_URL` with no trailing slash. If you set `GOOGLE_REDIRECT_URI`, register that exact string instead.
+   - Google allows `http://localhost:8080/auth/google/callback` and `http://127.0.0.1:8080/auth/google/callback` for a machine-local server. A public hostname must be `https`. With `NPSYNC_REQUIRE_HTTPS=true` the process refuses to start if the redirect URI is not https (localhost excepted).
+5. Copy the client ID and client secret into `.env`:
+
+   ```bash
+   GOOGLE_CLIENT_ID=
+   GOOGLE_CLIENT_SECRET=
+   # optional; default is ${BASE_URL}/auth/google/callback
+   GOOGLE_REDIRECT_URI=
+   ```
+
+6. `docker compose up -d` (or restart the server). In the plugin, **Sign in with Google** is the primary button. Email and password stay available so existing accounts can sign in and link Google the first time the same verified address is used.
+
+The callback URL carries a one-time authorization code. PKCE binds that code to the verifier stored on the server, so a code copied from a proxy log cannot be redeemed by itself. Prefer not to log query strings on `/auth/google/callback` if your proxy allows it.
+
+If only one of the client ID and secret is set, the server exits at startup rather than offering a half-configured login.
 
 ## Migrations
 
 The server applies SQL migrations from `server/migrations/` automatically at
 startup and records them in `schema_migrations`. Migrations are plain,
 versioned SQL files — no ORM auto-migration is ever used. To add a schema
-change, create the next file (`0002_*.sql`) and redeploy.
+change, create the next file (`0003_*.sql`) and redeploy.
 
 ## Reverse proxy example (Caddy)
 

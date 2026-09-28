@@ -23,7 +23,8 @@ This document defines the contract between the Notepad++ Sync plugin
 - HTTPS is required in production (`NPSYNC_REQUIRE_HTTPS=true` makes the
   server reject plain HTTP behind proxies). Local development may use HTTP.
 - Authentication uses `Authorization: Bearer <access_token>` except on
-  `/auth/register`, `/auth/login`, `/auth/refresh`, `/health`, `/ready`.
+  `/auth/register`, `/auth/login`, `/auth/refresh`, `/auth/google/start`,
+  `/auth/google/callback`, `/auth/google/poll`, `/health`, `/ready`.
 - All mutating endpoints accept an optional `Idempotency-Key` header.
   Replaying a request with the same key returns the original result without
   applying the mutation twice (protection against duplicate uploads after
@@ -51,14 +52,30 @@ Standard codes: `invalid_request`, `unauthorized`, `forbidden`,
 
 | Method | Path             | Auth | Description |
 |--------|------------------|------|-------------|
-| POST   | /auth/register   | no   | Create account. Rate-limited. |
-| POST   | /auth/login      | no   | Email+password → tokens. Rate-limited + brute-force lockout. |
-| POST   | /auth/refresh    | no   | Rotate refresh token → new token pair. |
-| POST   | /auth/logout     | yes  | Revoke the current device session/refresh token. |
+| POST   | /auth/register        | no   | Create account. Rate-limited. |
+| POST   | /auth/login           | no   | Email+password → tokens. Rate-limited + brute-force lockout. |
+| POST   | /auth/google/start    | no   | Begin Google Authorization Code + PKCE. Rate-limited. |
+| GET    | /auth/google/callback | no   | Browser redirect from Google. HTML only; no NPSync tokens. |
+| POST   | /auth/google/poll     | no   | Plugin polls with `poll_secret` until the browser flow finishes. |
+| POST   | /auth/refresh         | no   | Rotate refresh token → new token pair. |
+| POST   | /auth/logout          | yes  | Revoke the current device session/refresh token. |
 
 `POST /auth/register` and `/auth/login` take
 `{email, password, device_name}` and return
-`{account_id, device_id, access_token, access_expires_at, refresh_token}`.
+`{account_id, device_id, access_token, access_expires_at, refresh_token, server_protocols}`.
+
+`POST /auth/google/start` takes `{device_name}` and returns
+`{authorization_url, state, poll_secret, expires_in}`. The plugin opens
+`authorization_url` in the system browser. `POST /auth/google/poll` takes
+`{state, poll_secret}` and returns `202 {"status":"pending"}` until the
+callback finishes, then the same token body as `/auth/login`.
+
+Google is authentication only. The ID token is verified on the server
+(RS256, issuer, audience, expiry, nonce, `email_verified`) and then
+discarded. It is never an encryption key, and it is never returned to the
+plugin. A verified Google email links to an existing password account
+instead of creating a second one. Password login remains for those
+accounts and for servers that have not configured Google.
 
 - Access tokens are short-lived JWTs (default 15 min).
 - Refresh tokens are opaque 256-bit values, stored hashed, bound to one

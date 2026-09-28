@@ -64,8 +64,25 @@ class SyncEngine {
     void stop();
 
     // Auth lifecycle (called from UI actions).
+    // Google sign-in only authenticates the account. It does not derive,
+    // wrap, or replace the client-side master key.
     bool signIn(const std::string& email, const std::string& password, std::string& errorOut,
                 bool createAccount);
+    // Starts Authorization Code + PKCE on the server. The caller opens
+    // authorizationURL in the system browser; the code verifier stays server-side.
+    bool startGoogleSignIn(std::string& authorizationURL, std::string& state, std::string& pollSecret,
+                           std::string& errorOut);
+    enum class GoogleSignInStatus
+    {
+        Pending,
+        Success,
+        Failed
+    };
+    // One poll of an in-progress Google sign-in. Pending means keep waiting
+    // (including a transient network error). Success installs the NPSync
+    // session the same way password sign-in does.
+    GoogleSignInStatus pollGoogleSignIn(const std::string& state, const std::string& pollSecret,
+                                        std::string& errorOut);
     void signOut();
     bool isSignedIn() const;
 
@@ -158,6 +175,8 @@ class SyncEngine {
     std::string deviceId() const;
     bool online();
     static std::string nowTimeString();
+    // Persists an NPSync token response. Does not touch the master key.
+    bool acceptTokenResponse(const ApiResponse& r, std::string& errorOut, const char* failLabel);
 
     SettingsStore* store_ = nullptr;
     Settings* settings_ = nullptr;

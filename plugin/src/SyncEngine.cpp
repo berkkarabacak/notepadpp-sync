@@ -162,10 +162,9 @@ bool SyncEngine::isSignedIn() const {
     return api_ && api_->hasTokens();
 }
 
-bool SyncEngine::signIn(const std::string& email, const std::string& password, std::string& errorOut,
-                        bool createAccount) {
-    ApiResponse r = createAccount ? api_->registerAccount(email, password, settings_->deviceName)
-                                  : api_->login(email, password, settings_->deviceName);
+bool SyncEngine::acceptTokenResponse(const ApiResponse& r, std::string& errorOut, const char* failLabel) {
+    // Identity (password or Google) only establishes the account session.
+    // The master key is never derived from the identity provider.
     if (!r.transportOk) {
         errorOut = "Cannot reach server: " + r.transportError;
         return false;
@@ -175,7 +174,7 @@ bool SyncEngine::signIn(const std::string& email, const std::string& password, s
         return false;
     }
     if (r.status != 200) {
-        errorOut = r.body.value("message", createAccount ? "Registration failed" : "Sign-in failed");
+        errorOut = r.body.value("message", failLabel);
         return false;
     }
     settings_->deviceId = r.body.value("device_id", "");
@@ -186,6 +185,73 @@ bool SyncEngine::signIn(const std::string& email, const std::string& password, s
     setStatus(SyncStatus::Synced, "Signed in");
     syncRequested_ = true;
     return true;
+}
+
+bool SyncEngine::signIn(const std::string& email, const std::string& password, std::string& errorOut,
+                        bool createAccount) {
+    if (!api_) {
+        errorOut = "Plugin is not initialized.";
+        return false;
+    }
+    ApiResponse r = createAccount ? api_->registerAccount(email, password, settings_->deviceName)
+                                  : api_->login(email, password, settings_->deviceName);
+    return acceptTokenResponse(r, errorOut, createAccount ? "Registration failed" : "Sign-in failed");
+}
+
+bool SyncEngine::startGoogleSignIn(std::string& authorizationURL, std::string& state, std::string& pollSecret,
+                                   std::string& errorOut) {
+    if (!api_) {
+        errorOut = "Plugin is not initialized.";
+        return false;
+    }
+    ApiResponse r = api_->startGoogleLogin(settings_ ? settings_->deviceName : std::string());
+    if (!r.transportOk) {
+        errorOut = "Cannot reach server: " + r.transportError;
+        return false;
+    }
+    if (r.serverProtocol != 0 && r.serverProtocol != 1) {
+        errorOut = "This server speaks an incompatible protocol version. Update the plugin or the server.";
+        return false;
+    }
+    if (r.status == 503) {
+        errorOut = r.body.value("message", "Google sign-in is not configured on this server.");
+        return false;
+    }
+    if (r.status != 200) {
+        errorOut = r.body.value("message", "Could not start Google sign-in");
+        return false;
+    }
+    authorizationURL = r.body.value("authorization_url", "");
+    state = r.body.value("state", "");
+    pollSecret = r.body.value("poll_secret", "");
+    if (authorizationURL.empty() || state.empty() || pollSecret.empty()) {
+        errorOut = "Server returned an incomplete Google sign-in response.";
+        return false;
+    }
+    return true;
+}
+
+SyncEngine::GoogleSignInStatus SyncEngine::pollGoogleSignIn(const std::string& state,
+                                                            const std::string& pollSecret,
+                                                            std::string& errorOut) {
+    if (!api_) {
+        errorOut = "Plugin is not initialized.";
+        return GoogleSignInStatus::Failed;
+    }
+    ApiResponse r = api_->pollGoogleLogin(state, pollSecret);
+    if (!r.transportOk) {
+        // Keep the browser session alive across a blip; the dialog shows this
+        // and the user can cancel.
+        errorOut = "Cannot reach server: " + r.transportError;
+        return GoogleSignInStatus::Pending;
+    }
+    if (r.status == 202) {
+        errorOut.clear();
+        return GoogleSignInStatus::Pending;
+    }
+    if (acceptTokenResponse(r, errorOut, "Google sign-in failed"))
+        return GoogleSignInStatus::Success;
+    return GoogleSignInStatus::Failed;
 }
 
 void SyncEngine::signOut() {

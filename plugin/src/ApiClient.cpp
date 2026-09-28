@@ -250,6 +250,19 @@ ApiResponse ApiClient::login(const std::string& email, const std::string& passwo
     return r;
 }
 
+ApiResponse ApiClient::startGoogleLogin(const std::string& deviceName) {
+    json body = {{"device_name", deviceName}};
+    return request("POST", "/auth/google/start", &body, false);
+}
+
+ApiResponse ApiClient::pollGoogleLogin(const std::string& state, const std::string& pollSecret) {
+    json body = {{"state", state}, {"poll_secret", pollSecret}};
+    auto r = request("POST", "/auth/google/poll", &body, false);
+    if (r.status == 200)
+        setTokens(r.body.value("access_token", ""), r.body.value("refresh_token", ""));
+    return r;
+}
+
 ApiResponse ApiClient::logout() {
     json empty = json::object();
     auto r = request("POST", "/auth/logout", &empty, true);

@@ -33,6 +33,32 @@ func TestMemAccountLifecycle(t *testing.T) {
 	}
 }
 
+func TestMemGoogleAccountLink(t *testing.T) {
+	ctx := context.Background()
+	m := newMem()
+	passwordAcct, err := m.CreateAccount(ctx, "user@example.com", "hash")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := m.LinkGoogleSubject(ctx, passwordAcct.ID, "sub-1"); err != nil {
+		t.Fatal(err)
+	}
+	got, err := m.AccountByGoogleSub(ctx, "sub-1")
+	if err != nil || got.ID != passwordAcct.ID || got.PasswordHash != "hash" {
+		t.Fatalf("link: %+v %v", got, err)
+	}
+	if err := m.LinkGoogleSubject(ctx, passwordAcct.ID, "sub-2"); !errors.Is(err, ErrConflict) {
+		t.Fatalf("relink: %v", err)
+	}
+	if _, err := m.CreateGoogleAccount(ctx, "other@example.com", "sub-1"); !errors.Is(err, ErrDuplicate) {
+		t.Fatalf("duplicate sub: %v", err)
+	}
+	googleOnly, err := m.CreateGoogleAccount(ctx, "new@example.com", "sub-9")
+	if err != nil || googleOnly.PasswordHash != "" || googleOnly.GoogleSub != "sub-9" {
+		t.Fatalf("google account: %+v %v", googleOnly, err)
+	}
+}
+
 func TestMemLockout(t *testing.T) {
 	ctx := context.Background()
 	m := newMem()

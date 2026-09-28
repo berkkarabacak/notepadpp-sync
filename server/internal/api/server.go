@@ -29,27 +29,31 @@ const (
 
 // Server wires together all handlers.
 type Server struct {
-	cfg     *config.Config
-	st      store.Store
-	blobs   blob.Store
-	hub     *ws.Hub
-	signer  *auth.TokenSigner
-	limiter *loginLimiter
-	mux     *http.ServeMux
-	now     func() time.Time
+	cfg        *config.Config
+	st         store.Store
+	blobs      blob.Store
+	hub        *ws.Hub
+	signer     *auth.TokenSigner
+	limiter    *loginLimiter
+	mux        *http.ServeMux
+	now        func() time.Time
+	googleHTTP *http.Client
+	jwks       *auth.JWKSCache
 }
 
 func NewServer(cfg *config.Config, st store.Store, blobs blob.Store) *Server {
 	s := &Server{
-		cfg:     cfg,
-		st:      st,
-		blobs:   blobs,
-		hub:     ws.NewHub(16),
-		signer:  auth.NewTokenSigner(cfg.TokenSigningKey, cfg.AccessTokenTTL),
-		limiter: newLoginLimiter(cfg.LoginRatePerMin),
-		mux:     http.NewServeMux(),
-		now:     time.Now,
+		cfg:        cfg,
+		st:         st,
+		blobs:      blobs,
+		hub:        ws.NewHub(16),
+		signer:     auth.NewTokenSigner(cfg.TokenSigningKey, cfg.AccessTokenTTL),
+		limiter:    newLoginLimiter(cfg.LoginRatePerMin),
+		mux:        http.NewServeMux(),
+		now:        time.Now,
+		googleHTTP: &http.Client{Timeout: 15 * time.Second},
 	}
+	s.jwks = auth.NewJWKSCache(func() string { return s.cfg.GoogleJWKSURL }, s.googleHTTP, time.Hour)
 	s.routes()
 	return s
 }
@@ -65,6 +69,9 @@ func (s *Server) routes() {
 	s.mux.HandleFunc("POST /auth/login", s.handleLogin)
 	s.mux.HandleFunc("POST /auth/refresh", s.handleRefresh)
 	s.mux.HandleFunc("POST /auth/logout", s.withAuth(s.handleLogout))
+	s.mux.HandleFunc("POST /auth/google/start", s.handleGoogleStart)
+	s.mux.HandleFunc("GET /auth/google/callback", s.handleGoogleCallback)
+	s.mux.HandleFunc("POST /auth/google/poll", s.handleGooglePoll)
 
 	s.mux.HandleFunc("GET /devices", s.withAuth(s.handleListDevices))
 	s.mux.HandleFunc("POST /devices/pair", s.withAuth(s.handlePair))

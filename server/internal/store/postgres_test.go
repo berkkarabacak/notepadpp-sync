@@ -57,7 +57,7 @@ func openTestPostgres(t *testing.T) *Postgres {
 	// Clean slate per test: wipe tables used by the suite.
 	for _, table := range []string{"changes", "file_versions", "files",
 		"idempotency_keys", "pairing_codes", "sessions", "refresh_tokens",
-		"devices", "accounts"} {
+		"devices", "oauth_logins", "accounts"} {
 		if _, err := p.db.ExecContext(ctx, "DELETE FROM "+table); err != nil {
 			t.Fatalf("clean %s: %v", table, err)
 		}

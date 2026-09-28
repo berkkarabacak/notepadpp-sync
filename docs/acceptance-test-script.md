@@ -22,6 +22,9 @@ into the issue you file.
       `acceptance@test.dev`, device name `TestLaptop-A`.
 - [ ] **0.3** Recovery key `NPSYNC-…` is displayed once; write it down.
 - [ ] **0.4** On B: sign in to the same account, device name `TestLaptop-B`.
+      Google sign-in uses the same Google account; it does not copy the
+      encryption key. Pairing or the recovery key is still required.
+      Email/password remains available for accounts created that way.
       Use the **pairing code flow** (request on B, approve on A) — keys
       transfer without typing the recovery key.
 - [ ] **0.5** Add sync folder `C:\SyncTest` on both machines.

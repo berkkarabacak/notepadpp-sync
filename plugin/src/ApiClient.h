@@ -42,6 +42,11 @@ class ApiClient {
     ApiResponse registerAccount(const std::string& email, const std::string& password,
                                 const std::string& deviceName);
     ApiResponse login(const std::string& email, const std::string& password, const std::string& deviceName);
+    // Google SSO: the server holds the OAuth client secret and PKCE verifier.
+    // start returns authorization_url, state, and poll_secret. poll returns
+    // 202 while the browser redirect is unfinished, then the usual token body.
+    ApiResponse startGoogleLogin(const std::string& deviceName);
+    ApiResponse pollGoogleLogin(const std::string& state, const std::string& pollSecret);
     ApiResponse logout();
 
     // ---- devices ----

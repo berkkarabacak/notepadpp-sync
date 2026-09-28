@@ -29,7 +29,8 @@ copy build\Debug\NppSync.dll "C:\Program Files\Notepad++\plugins\NppSync\"
 ```
 
 Point the plugin at `http://localhost:8080` via Settings → Advanced →
-Backend URL, register an account through the first-run wizard, and sync.
+Backend URL, sign in (Google, once `NPSYNC_GOOGLE_CLIENT_ID` and
+`NPSYNC_GOOGLE_CLIENT_SECRET` are set, or email/password), and sync.
 
 ## Server layout
 
@@ -37,7 +38,7 @@ Backend URL, register an account through the first-run wizard, and sync.
 server/
   cmd/server/main.go     entry point, migrations, graceful shutdown
   internal/config/       env configuration & limits
-  internal/auth/         argon2id, tokens
+  internal/auth/         argon2id, tokens, Google ID-token verification
   internal/store/        Store interface + Postgres + in-memory impl
   internal/blob/         blob storage: fs + s3 (SigV4, stdlib only)
   internal/api/          REST/WS handlers, middleware, rate limiting
