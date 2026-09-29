@@ -8,6 +8,12 @@ Notepad++ ≥ 8.x, plus a running server (`docker compose up -d` or the dev
 server from `docs/developer.md`). Both plugin instances sign into the **same
 account** as two devices (`TestLaptop-A`, `TestLaptop-B`).
 
+A fresh install uses `https://sync.berkkarabacak.com`. If the server under
+test is not that host, set **Settings → Advanced → Backend URL** to it,
+choose **Save**, and restart Notepad++ before sign-in. **Save** does not
+retarget the running process. `http://localhost:8080` remains the local
+override.
+
 **How to record results:** check the box and note the time. If a step fails,
 copy the last 50 lines of `%APPDATA%\Notepad++Sync\logs\npsync-YYYYMM.log`
 into the issue you file.

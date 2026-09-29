@@ -44,8 +44,8 @@ under the same Windows user are one device — they share
    - Start Notepad++. If **Notepad++ Sync — Setup** appears, choose **No**.
    - **Plugins → Notepad++ Sync → Settings → Advanced**.
    - **Backend URL:** `http://localhost:8080` (or your `https://` public
-     URL, the same value as `BASE_URL`). The untouched default is
-     `https://sync.example.com` and does not connect.
+     URL, the same value as `BASE_URL`). A fresh install uses
+     `https://sync.berkkarabacak.com`. This laptop demo replaces that.
    - **Settings → Security → This device name:** `Laptop-A`.
    - **Save**, then quit Notepad++ completely.
 
@@ -70,8 +70,9 @@ bytes stay in the `blobdata` volume.
 
 Start Notepad++. **Plugins → Notepad++ Sync → Settings → Advanced** and
 show **Backend URL** is `http://localhost:8080` (or the public `https://`
-URL). Close with **Cancel** so you do not change it. There is no hosted
-service to sign up for.
+URL you set as `BASE_URL`). A fresh install would show
+`https://sync.berkkarabacak.com`; this demo overrides that before
+sign-in. Close with **Cancel** so you do not change it.
 
 ## 2. Create the account (~2 min)
 

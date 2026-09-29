@@ -28,8 +28,11 @@ ctest --test-dir build -C Debug --output-on-failure
 copy build\Debug\NppSync.dll "C:\Program Files\Notepad++\plugins\NppSync\"
 ```
 
-Point the plugin at `http://localhost:8080` via Settings → Advanced →
-Backend URL, sign in (Google, once `NPSYNC_GOOGLE_CLIENT_ID` and
+The plugin's shipping Backend URL is `https://sync.berkkarabacak.com`.
+For local development, point the plugin at `http://localhost:8080` via
+Settings → Advanced → Backend URL, **Save**, and restart Notepad++.
+The running process keeps the URL it loaded at startup. Then sign in
+(Google, once `NPSYNC_GOOGLE_CLIENT_ID` and
 `NPSYNC_GOOGLE_CLIENT_SECRET` are set, or email/password), and sync.
 
 ## Server layout

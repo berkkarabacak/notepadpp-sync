@@ -53,7 +53,9 @@ bool SettingsStore::load(Settings& s) {
     s.deviceName = j.value("device_name", std::string());
     s.deviceId = j.value("device_id", std::string());
     s.accountId = j.value("account_id", std::string());
-    s.backendUrl = j.value("backend_url", "https://sync.example.com");
+    const bool hasBackendUrl = j.contains("backend_url");
+    s.backendUrl = resolveBackendUrl(hasBackendUrl ? j.value("backend_url", std::string()) : std::string(),
+                                     hasBackendUrl);
     s.debugLogging = j.value("debug_logging", false);
     s.versionRetention = j.value("version_retention", 30);
     std::string dbLoc = j.value("database_location", std::string());

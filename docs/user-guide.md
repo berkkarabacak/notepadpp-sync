@@ -19,10 +19,8 @@ No command line required.
 
 ## 2. First-run setup
 
-> **You need a server before this step.** Notepad++ Sync has no hosted service.
-> Run one with `docker compose up -d` (see [Self-hosting](self-hosting.md)), then set
-> *Settings → Advanced → Backend URL* to it. The shipped default is a placeholder
-> and will not connect.
+A fresh install connects to `https://sync.berkkarabacak.com`. You do not
+type a server address.
 
 The first time the plugin loads, a short setup runs:
 
@@ -38,6 +36,13 @@ The first time the plugin loads, a short setup runs:
 3. **Name this device** (e.g. `Laptop-Home`) so you recognize it later.
 4. **Choose files/folders to sync.**
 5. Done. Sync runs quietly in the background from now on.
+
+To use a server you run yourself, open **Plugins → Notepad++ Sync →
+Settings → Advanced**, set **Backend URL** (for example
+`http://localhost:8080`), choose **Save**, and restart Notepad++.
+**Save** writes the address. The copy of Notepad++ that is already
+running keeps the address it read at startup. See
+[Self-hosting](self-hosting.md).
 
 ## 3. Everyday use
 
