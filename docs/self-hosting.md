@@ -102,7 +102,7 @@ These exist so tests can point at a fake identity provider. Leave them unset in 
 
 ## Google sign-in
 
-The plugin is a native Windows client, so it does not embed a client secret. The server is the OAuth client: Authorization Code with PKCE (S256). The plugin opens the system browser and polls the server until you finish in the browser. Google identity only signs the account in. Encryption keys stay on the device; a second computer still needs pairing or the recovery key.
+The plugin is a native Windows client, so it does not embed a client secret. The server is the OAuth client: Authorization Code with PKCE (S256). The plugin opens the system browser and polls the server until you finish in the browser. Google identity only signs the account in. Encryption keys stay on the device. A second computer gets the key when the computer that already has it chooses **Allow another computer**. The recovery key on the first Windows user does not unlock the second computer. The plugin's default Backend URL is `https://sync.berkkarabacak.com`; point it at your server only when you are self-hosting.
 
 Use a **Web application** client, not a Desktop client. Google redirects to your server, not to a random localhost port on each PC.
 

@@ -81,6 +81,12 @@ void cmdStatus() {
 void cmdDevices() {
     Dialogs::showDevices(g_nppData._nppHandle, *g_engine);
 }
+void cmdAllowComputer() {
+    Dialogs::allowAnotherComputer(g_nppData._nppHandle, *g_engine);
+}
+void cmdGetMyNotes() {
+    Dialogs::getMyNotes(g_nppData._nppHandle, *g_engine);
+}
 void cmdSyncedFiles() {
     Dialogs::showSyncedFiles(g_nppData._nppHandle, *g_engine);
 }
@@ -121,6 +127,8 @@ void initMenu() {
     setMenuItem(CmdSettings, L"Settings", cmdSettings);
     setMenuItem(CmdPauseSync, L"Pause Sync", cmdPauseSync);
     setMenuItem(CmdAbout, L"About", cmdAbout);
+    setMenuItem(CmdAllowComputer, L"Allow another computer", cmdAllowComputer);
+    setMenuItem(CmdGetMyNotes, L"Get my notes", cmdGetMyNotes);
 }
 
 void startEngine() {

@@ -18,11 +18,11 @@ Notepad++ Sync is a native Notepad++ plugin plus a small self-hostable backend. 
 - **Realtime sync** — WebSocket push notifications, with automatic fallback to periodic polling when the socket drops.
 - **Real conflict handling** — never naïve last-write-wins. Divergent edits are detected by explicit version tracking (not timestamps), auto-merged with a three-way text merge when safe, and surfaced in a conflict UI otherwise. Nothing is silently discarded.
 - **Offline-first** — full functionality without connectivity; changes queue locally in SQLite and reconcile on reconnect, surviving restarts and crashes.
-- **Multi-device** — secure device pairing (pairing code) and an offline recovery key (`NPSYNC-XXXX-…`). View and revoke devices at any time.
+- **Multi-device** — a second computer receives the existing encryption key when you allow it (a short code, wrapped so the server cannot read the key). View and revoke devices at any time. A recovery key shown on the first computer stays on that Windows user; it does not unlock another PC.
 - **Version history** — browse and restore recent versions of any file (configurable retention; 30 versions per file by default).
 - **File selection** — sync individual files or whole folders, with `.gitignore`-style exclude rules and a local `.npsyncignore` file.
 - **Session sync (optional)** — open tabs, selected tab, cursor and scroll positions. Unsaved documents are **never** uploaded by default.
-- **Ready to use, and self-hostable** — a fresh install talks to `https://sync.berkkarabacak.com`. You do not type a server address. Self-hosters can point the plugin at their own server under *Settings → Advanced → Backend URL* (for example `http://localhost:8080`) and restart Notepad++. No external object storage required.
+- **Ready to use, and self-hostable** — a fresh install talks to `https://sync.berkkarabacak.com`. You do not type a server address. Self-hosters can point the plugin at their own server under *Settings → Advanced → Backend URL* (for example `http://localhost:8080`), choose **Save**, and restart Notepad++. **Save** does not retarget a Notepad++ process that is already running. No external object storage required.
 - **Privacy-first** — zero analytics or telemetry.
 
 ## Installation
@@ -37,7 +37,7 @@ Notepad++ Sync is a native Notepad++ plugin plus a small self-hostable backend. 
    ```
 4. Start Notepad++. **Plugins → Notepad++ Sync** is in the menu.
    A fresh install uses `https://sync.berkkarabacak.com`. You do not type a server address.
-5. Follow the first-run setup: **Sign in with Google** (or email and password, for an existing account), generate encryption keys, name this device, choose files/folders, done.
+5. Follow the first-run setup: **Sign in with Google** (or email and password, for an existing account). On the first computer, an encryption key is created on that PC. On a second computer, say the notes are already elsewhere and let the first computer allow it. Name this device, choose files/folders, done.
 
 See the [User Guide](docs/user-guide.md) for details and screenshots.
 
@@ -62,7 +62,9 @@ Everything lives under **Plugins → Notepad++ Sync**:
 | Sign In / Out    | Sign in with Google, or with email and password    |
 | Sync Now         | Force an immediate sync cycle                       |
 | Sync Status      | Status window (state, last sync, pending ops, devices) |
-| Manage Devices   | List / rename / revoke devices, pair a new device   |
+| Allow another computer | On the computer that already has the notes: type the code from the new computer |
+| Get my notes     | On the new computer: show a code and wait until the key arrives |
+| Manage Devices   | List / rename / revoke devices; the same two actions as above |
 | Synced Files/Folders | Manage sync roots and ignore rules              |
 | Conflicts        | Resolve conflicts (Keep Local / Remote / Both / Compare / Manual Merge) |
 | Settings         | General, Files, Session, Security, Advanced         |
@@ -73,10 +75,10 @@ A small status indicator shows `Synced`, `Syncing`, `Offline`, `Conflict`, or `E
 
 ## Security model (summary)
 
-- **Auth and encryption are separate.** Google sign-in (and email/password, where you still use it) only authenticates the account. File encryption uses a master key generated locally on first setup; the server never sees it, your Google tokens, your password, or your recovery key. A new device still needs pairing or the recovery key.
+- **Auth and encryption are separate.** Google sign-in (and email/password, where you still use it) only authenticates the account. File encryption uses a master key generated on the first computer; the server never sees it, your Google tokens, your password, or your recovery key. A second computer gets that key only when the first computer allows it. The recovery key stored for the first Windows user does not unlock the second computer.
 - Files are encrypted client-side with AES-256-GCM; metadata (names, paths) is encrypted as well. The server stores account IDs, opaque file IDs, ciphertext, sizes, and version vectors only.
 - Access tokens expire; refresh tokens are revocable per device. Login endpoints are rate-limited with brute-force protection.
-- Losing **all** devices **and** the recovery key means your encrypted data is unrecoverable — there is deliberately no server-side password reset that can decrypt your files.
+- If every computer that holds the master key is lost before another computer is allowed, the notes on the server cannot be read. There is no server-side reset. The recovery key on the first computer does not replace that.
 
 Full details: [Security model](docs/security-model.md) and [SECURITY.md](SECURITY.md).
 

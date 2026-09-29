@@ -268,12 +268,10 @@ bool SyncEngine::hasMasterKey() const {
     return masterKey_.size() == kMasterKeyLen;
 }
 
-bool SyncEngine::generateMasterKeyIfNeeded() {
-    if (hasMasterKey())
-        return true;
-    masterKey_ = Crypto::generateMasterKey();
-    // Also generate a recovery key: wrap the master key under it and store
-    // the wrapped blob so the recovery key alone can unlock the account.
+bool SyncEngine::writeLocalRecoveryWrap() {
+    // The recovery key wraps the master key in a DPAPI secret for this
+    // Windows user. It is not uploaded, and typing it on another PC does
+    // not install the master key there.
     std::string recovery = Crypto::generateRecoveryKey();
     Bytes salt = Crypto::random(16);
     Bytes wk = Crypto::deriveKeyFromCode(recovery, salt);
@@ -281,9 +279,25 @@ bool SyncEngine::generateMasterKeyIfNeeded() {
     json rec = {{"salt", Crypto::base64UrlEncode(salt)}, {"wrapped", Crypto::base64UrlEncode(wrapped)}};
     if (!store_->saveSecret(L"recovery_wrapped", rec.dump()))
         return false;
-    if (!store_->saveSecret(L"recovery_key_display", recovery))
-        return false;
-    return store_->saveSecret(L"master_key", Crypto::base64UrlEncode(masterKey_));
+    return store_->saveSecret(L"recovery_key_display", recovery);
+}
+
+SyncEngine::FirstRunKeyStep SyncEngine::finishFirstRunKeys(bool createIfMissing) {
+    WizardKeyOutcome outcome = applyWizardKeyStep(masterKey_, createIfMissing);
+    if (outcome == WizardKeyOutcome::KeptExisting)
+        return FirstRunKeyStep::KeptExisting;
+    if (outcome == WizardKeyOutcome::RefusedToMint)
+        return FirstRunKeyStep::RefusedToMint;
+    if (!store_ || !store_->saveSecret(L"master_key", Crypto::base64UrlEncode(masterKey_))) {
+        masterKey_.clear();
+        return FirstRunKeyStep::RefusedToMint;
+    }
+    writeLocalRecoveryWrap();
+    return FirstRunKeyStep::CreatedNew;
+}
+
+bool SyncEngine::generateMasterKeyIfNeeded() {
+    return finishFirstRunKeys(true) != FirstRunKeyStep::RefusedToMint;
 }
 
 bool SyncEngine::unlockWithRecoveryKey(const std::string& recoveryKey) {
@@ -322,74 +336,98 @@ std::string SyncEngine::exportRecoveryKeyWrapped() {
 bool SyncEngine::pairNewDevice(std::string& codeOut, std::string& errorOut) {
     // This device wants to join: request a code. An existing device approves.
     ApiResponse r = api_->pairRequest();
+    if (!r.transportOk) {
+        errorOut = "Cannot reach server: " + r.transportError;
+        return false;
+    }
     if (r.status != 200) {
-        errorOut = r.body.value("message", "pairing request failed");
+        errorOut = r.body.value("message", "Could not start. Try again.");
         return false;
     }
     codeOut = r.body.value("pairing_code", "");
-    return !codeOut.empty();
+    if (codeOut.empty()) {
+        errorOut = "Could not start. Try again.";
+        return false;
+    }
+    return true;
 }
 
 bool SyncEngine::approvePairing(const std::string& code, std::string& errorOut) {
     if (!hasMasterKey()) {
-        errorOut = "no master key on this device";
+        errorOut = "This computer does not have the encryption key yet.";
         return false;
     }
-    // Wrap the master key under a key derived from the pairing code.
-    Bytes salt = Crypto::random(16);
-    Bytes wk = Crypto::deriveKeyFromCode(code, salt);
-    Bytes wrapped = Crypto::wrapMasterKey(masterKey_, wk);
-    json payload = {{"salt", Crypto::base64UrlEncode(salt)}, {"wrapped", Crypto::base64UrlEncode(wrapped)}};
-    ApiResponse r =
-        api_->pairApprove(code, Crypto::base64UrlEncode(Bytes(payload.dump().begin(), payload.dump().end())));
+    std::string normalized;
+    if (!normalizePairingCode(code, normalized)) {
+        errorOut = "That code does not look right. It is 8 letters, like ABCD-EFGH.";
+        return false;
+    }
+    // The server stores this blob and cannot read the master key inside it.
+    std::string wrapped = wrapMasterKeyForPairing(masterKey_, normalized);
+    if (wrapped.empty()) {
+        errorOut = "Could not prepare the encryption key for the other computer.";
+        return false;
+    }
+    ApiResponse r = api_->pairApprove(normalized, wrapped);
+    if (!r.transportOk) {
+        errorOut = "Cannot reach server: " + r.transportError;
+        return false;
+    }
     if (r.status != 200) {
         errorOut = r.body.value("message", "approval failed");
+        if (errorOut.find("own pairing") != std::string::npos) {
+            errorOut = "This computer showed that code, so it cannot allow itself. "
+                       "Two Notepad++ windows on this Windows user are one device. "
+                       "On the computer that already has your notes, choose "
+                       "Allow another computer and type the code shown here.";
+        }
         return false;
     }
     return true;
 }
 
-bool SyncEngine::completePairing(const std::string& code, std::string& errorOut) {
-    ApiResponse r = api_->pairPoll(code);
+SyncEngine::PairingStatus SyncEngine::completePairing(const std::string& code, std::string& errorOut) {
+    std::string normalized;
+    if (!normalizePairingCode(code, normalized)) {
+        errorOut = "That code does not look right. It is 8 letters, like ABCD-EFGH.";
+        return PairingStatus::Failed;
+    }
+    ApiResponse r = api_->pairPoll(normalized);
+    if (!r.transportOk) {
+        // Keep waiting across a blip. The dialog stops on its own timer.
+        errorOut = "Cannot reach server: " + r.transportError;
+        return PairingStatus::Pending;
+    }
     if (r.status == 410) {
-        errorOut = "pairing code expired";
-        return false;
+        errorOut = "That code expired. Choose Get my notes again.";
+        return PairingStatus::Failed;
     }
     if (r.status != 200) {
-        errorOut = r.body.value("message", "pairing poll failed");
-        return false;
+        errorOut = r.body.value("message", "Could not check the other computer.");
+        return PairingStatus::Failed;
     }
     if (r.body.value("status", "") != "approved") {
-        errorOut = "pending";
-        return false;
+        errorOut.clear();
+        return PairingStatus::Pending;
     }
-    Bytes blob;
-    if (!Crypto::base64UrlDecode(r.body.value("wrapped_master_key", ""), blob)) {
-        errorOut = "bad wrapped key";
-        return false;
+    Bytes mk;
+    if (!installWrappedMasterKey(r.body.value("wrapped_master_key", ""), normalized, mk)) {
+        errorOut = "The other computer sent a key this computer could not open.";
+        return PairingStatus::Failed;
     }
-    json payload;
-    try {
-        payload = json::parse(std::string(blob.begin(), blob.end()));
+    masterKey_ = std::move(mk);
+    if (!store_ || !store_->saveSecret(L"master_key", Crypto::base64UrlEncode(masterKey_))) {
+        masterKey_.clear();
+        errorOut = "The key arrived but could not be saved on this computer.";
+        return PairingStatus::Failed;
     }
-    catch (...) {
-        errorOut = "bad wrapped key";
-        return false;
-    }
-    Bytes salt, wrapped, mk;
-    if (!Crypto::base64UrlDecode(payload.value("salt", ""), salt) ||
-        !Crypto::base64UrlDecode(payload.value("wrapped", ""), wrapped)) {
-        errorOut = "bad wrapped key";
-        return false;
-    }
-    Bytes wk = Crypto::deriveKeyFromCode(code, salt);
-    if (!Crypto::unwrapMasterKey(wrapped, wk, mk)) {
-        errorOut = "could not unwrap key (wrong code?)";
-        return false;
-    }
-    masterKey_ = mk;
-    store_->saveSecret(L"master_key", Crypto::base64UrlEncode(masterKey_));
-    return true;
+    // Drop a recovery wrap that belongs to a key this PC minted earlier.
+    // The key just installed is the other computer's. The old recovery
+    // string would open a key this PC no longer uses.
+    store_->deleteSecret(L"recovery_wrapped");
+    store_->deleteSecret(L"recovery_key_display");
+    syncRequested_ = true;
+    return PairingStatus::Installed;
 }
 
 void SyncEngine::setPaused(bool paused) {

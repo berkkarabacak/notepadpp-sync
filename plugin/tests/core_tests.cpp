@@ -17,9 +17,12 @@
 #include "Settings.h"
 #include "core/Crypto.h"
 #include "core/IgnoreRules.h"
+#include "core/KeySetup.h"
 #include "core/Merge.h"
 #include "core/PathUtil.h"
 #include "core/VersionVector.h"
+
+#include <map>
 
 using namespace npsync;
 
@@ -347,10 +350,132 @@ void testDefaultBackendUrl() {
     RemoveDirectoryW(dir.c_str());
 }
 
+// In-memory stand-in for POST /devices/pair. It stores the wrapped blob
+// opaquely and enforces the live server's rules: the device that requested
+// the code cannot approve it, only that device can poll, and the code is
+// single-use. Two Notepad++ windows that share a device id are one device.
+struct PairingRelay
+{
+    struct Slot
+    {
+        std::string requester;
+        std::string wrapped;
+        bool consumed = false;
+    };
+    std::map<std::string, Slot> codes;
+    int issued = 0;
+
+    std::string request(const std::string& deviceId) {
+        static const char* samples[] = {"ABCD-EFGH", "MNPQ-RSTU", "WXYZ-2345"};
+        std::string code = samples[issued++ % 3];
+        codes[code] = Slot{deviceId, "", false};
+        return code;
+    }
+
+    bool approve(const std::string& deviceId, const std::string& code, const std::string& wrapped,
+                 std::string& error) {
+        std::string norm;
+        if (!normalizePairingCode(code, norm) || !codes.count(norm) || codes[norm].consumed) {
+            error = "not found";
+            return false;
+        }
+        if (codes[norm].requester == deviceId) {
+            error = "cannot approve your own pairing request";
+            return false;
+        }
+        if (wrapped.empty()) {
+            error = "wrapped required";
+            return false;
+        }
+        codes[norm].wrapped = wrapped;
+        return true;
+    }
+
+    bool poll(const std::string& deviceId, const std::string& code, std::string& wrapped,
+              std::string& error) {
+        std::string norm;
+        if (!normalizePairingCode(code, norm) || !codes.count(norm) || codes[norm].requester != deviceId) {
+            error = "not found";
+            return false;
+        }
+        if (codes[norm].consumed) {
+            error = "pairing code expired";
+            return false;
+        }
+        if (codes[norm].wrapped.empty()) {
+            error = "pending";
+            return false;
+        }
+        wrapped = codes[norm].wrapped;
+        codes[norm].consumed = true;
+        return true;
+    }
+};
+
+// Product path: PC1 mints the account key, PC2 must not mint while it waits,
+// PC1 allows the code, PC2 polls and installs that same key, then the wizard
+// still does not mint. A note encrypted on PC1 decrypts on PC2.
+void testSecondComputerReceivesKeyAndWizardDoesNotMint() {
+    Bytes pc1;
+    CHECK(applyWizardKeyStep(pc1, true) == WizardKeyOutcome::CreatedNew);
+    CHECK(pc1.size() == kMasterKeyLen);
+    const std::string note = "grocery list from the first PC";
+    Bytes cipher = Crypto::encrypt(pc1, Bytes(note.begin(), note.end()), "file");
+
+    Bytes pc2;
+    CHECK(applyWizardKeyStep(pc2, false) == WizardKeyOutcome::RefusedToMint);
+    CHECK(pc2.empty());
+
+    const std::string id1 = "pc1";
+    const std::string id2 = "pc2";
+    PairingRelay server;
+    std::string code = server.request(id2);
+
+    std::string err;
+    CHECK(!server.approve(id2, code, "opaque-blob-not-a-key", err));
+    CHECK(err.find("own pairing") != std::string::npos);
+
+    std::string wrapped;
+    CHECK(!server.poll(id2, code, wrapped, err));
+    CHECK(err == "pending");
+    CHECK(applyWizardKeyStep(pc2, false) == WizardKeyOutcome::RefusedToMint);
+    CHECK(pc2.empty());
+
+    // Typed the way a person types it. The wrap is what the server would store.
+    const std::string typed = "abcd efgh";
+    std::string blob = wrapMasterKeyForPairing(pc1, typed);
+    CHECK(!blob.empty());
+    CHECK(server.approve(id1, typed, blob, err));
+    CHECK(!server.poll(id1, code, wrapped, err));
+    CHECK(server.poll(id2, code, wrapped, err));
+    CHECK(wrapped == blob);
+    CHECK(installWrappedMasterKey(wrapped, code, pc2));
+    CHECK(pc2 == pc1);
+    CHECK(!server.poll(id2, code, wrapped, err));
+    CHECK(err == "pairing code expired");
+
+    Bytes beforeWizard = pc2;
+    CHECK(applyWizardKeyStep(pc2, false) == WizardKeyOutcome::KeptExisting);
+    CHECK(applyWizardKeyStep(pc2, true) == WizardKeyOutcome::KeptExisting);
+    CHECK(pc2 == beforeWizard);
+    CHECK(pc2 == pc1);
+
+    Bytes plain;
+    CHECK(Crypto::decrypt(pc2, cipher, "file", plain));
+    CHECK(std::string(plain.begin(), plain.end()) == note);
+
+    Bytes pc3;
+    CHECK(applyWizardKeyStep(pc3, true) == WizardKeyOutcome::CreatedNew);
+    CHECK(pc3 != pc1);
+    Bytes nope;
+    CHECK(!Crypto::decrypt(pc3, cipher, "file", nope));
+}
+
 int main() {
     testCryptoRoundTrip();
     testEmptyCiphertextAuth();
     testKeyWrap();
+    testSecondComputerReceivesKeyAndWizardDoesNotMint();
     testRecoveryKey();
     testSha256();
     testBase64Url();

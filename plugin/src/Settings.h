@@ -53,7 +53,9 @@ struct Settings
     std::string deviceId;
     std::string accountId;
 
-    // Advanced
+    // Advanced. Fresh installs use kDefaultBackendUrl. Any other saved URL,
+    // including localhost, is kept. Save writes the file; a running Notepad++
+    // keeps the URL it loaded at startup until it is restarted.
     std::string backendUrl = kDefaultBackendUrl;
     bool debugLogging = false;
     std::wstring databaseLocation; // empty = default

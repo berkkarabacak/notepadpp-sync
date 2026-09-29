@@ -34,10 +34,21 @@ void showConflicts(HWND parent, SyncEngine& engine);
 // Device management (list, rename, revoke, pair).
 void showDevices(HWND parent, SyncEngine& engine);
 
+// Computer that already has the notes: type the code shown on the new one.
+// Wraps this device's master key. Does not poll.
+void allowAnotherComputer(HWND parent, SyncEngine& engine);
+
+// Computer that needs the notes: request a code, show it, and poll until
+// the other computer allows it. On success the wrapped master key is installed.
+// Returns true only when this device holds a master key afterwards.
+bool getMyNotes(HWND parent, SyncEngine& engine);
+
 // Settings (general/files/session/security/advanced tabs).
 void showSettings(HWND parent, SyncEngine& engine);
 
-// First-run setup wizard (account -> keys -> device name -> roots -> go).
+// First-run setup wizard. Signs in, then either keeps a key delivered by
+// pairing or mints one on the first computer. Does not mint when pairing
+// already installed a key.
 void showFirstRunWizard(HWND parent, SyncEngine& engine);
 
 void showAbout(HWND parent);

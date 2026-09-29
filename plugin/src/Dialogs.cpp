@@ -465,6 +465,183 @@ void Dialogs::showStatus(HWND parent, SyncEngine& engine) {
     runModal(parent, L"Notepad++ Sync — Status", 360, 325, statusProc, base);
 }
 
+// ============================ Second computer ============================
+
+namespace
+{
+constexpr UINT_PTR kPairPollTimer = 2;
+constexpr ULONGLONG kPairPollLimitMs = 5ull * 60ull * 1000ull + 15ull * 1000ull;
+
+enum
+{
+    ID_PAIR_CODE = 100,
+    ID_PAIR_STATUS = 101
+};
+
+struct PairWaitCtx : DialogBase
+{
+    std::string code;
+    bool installed = false;
+    bool polling = false;
+    ULONGLONG startedAt = 0;
+};
+
+INT_PTR CALLBACK pairWaitProc(HWND dlg, UINT msg, WPARAM wp, LPARAM lp) {
+    switch (msg) {
+    case WM_INITDIALOG: {
+        SetWindowLongPtrW(dlg, GWLP_USERDATA, lp);
+        auto& c = static_cast<PairWaitCtx&>(ctx(dlg));
+        makeLabel(dlg, L"On the computer that already has your notes, open Notepad++.", 12, 12, 420, 18);
+        makeLabel(dlg, L"Choose Plugins \u2192 Notepad++ Sync \u2192 Allow another computer.", 12, 32, 420,
+                  18);
+        makeLabel(dlg, L"Type this code there. Leave this window open.", 12, 52, 420, 18);
+        makeLabel(dlg, L"", 12, 80, 420, 28, ID_PAIR_CODE);
+        setText(dlg, ID_PAIR_CODE, widen(c.code));
+        makeLabel(dlg, L"Waiting for the other computer\u2026", 12, 116, 420, 36, ID_PAIR_STATUS);
+        makeButton(dlg, IDCANCEL, L"Cancel", 332, 160, 100, 26);
+        setDefaultFont(dlg);
+        c.startedAt = GetTickCount64();
+        SetTimer(dlg, kPairPollTimer, 1500, nullptr);
+        return TRUE;
+    }
+    case WM_TIMER: {
+        if (wp != kPairPollTimer)
+            break;
+        auto& c = static_cast<PairWaitCtx&>(ctx(dlg));
+        if (c.polling || c.installed)
+            return TRUE;
+        if (GetTickCount64() - c.startedAt > kPairPollLimitMs) {
+            KillTimer(dlg, kPairPollTimer);
+            setText(dlg, ID_PAIR_STATUS,
+                    L"That code expired. Close this window and choose Get my notes again.");
+            return TRUE;
+        }
+        c.polling = true;
+        std::string err;
+        auto st = c.engine->completePairing(c.code, err);
+        c.polling = false;
+        if (st == SyncEngine::PairingStatus::Pending) {
+            if (!err.empty())
+                setText(dlg, ID_PAIR_STATUS, widen(err));
+            else
+                setText(dlg, ID_PAIR_STATUS, L"Waiting for the other computer\u2026");
+            return TRUE;
+        }
+        KillTimer(dlg, kPairPollTimer);
+        if (st == SyncEngine::PairingStatus::Installed) {
+            c.installed = true;
+            c.done = true;
+            EndDialog(dlg, IDOK);
+            return TRUE;
+        }
+        setText(dlg, ID_PAIR_STATUS, widen(err));
+        return TRUE;
+    }
+    case WM_COMMAND:
+        if (LOWORD(wp) == IDCANCEL) {
+            KillTimer(dlg, kPairPollTimer);
+            EndDialog(dlg, IDCANCEL);
+            return TRUE;
+        }
+        break;
+    case WM_CLOSE:
+        KillTimer(dlg, kPairPollTimer);
+        EndDialog(dlg, IDCANCEL);
+        return TRUE;
+    case WM_DESTROY:
+        KillTimer(dlg, kPairPollTimer);
+        break;
+    }
+    return FALSE;
+}
+
+bool waitForOtherComputer(HWND parent, SyncEngine& engine, const std::string& code) {
+    PairWaitCtx c;
+    c.engine = &engine;
+    c.code = code;
+    INT_PTR r = runModal(parent, L"Notepad++ Sync — Other computer", 450, 210, pairWaitProc, c);
+    return r == IDOK && c.installed && engine.hasMasterKey();
+}
+} // namespace
+
+void Dialogs::allowAnotherComputer(HWND parent, SyncEngine& engine) {
+    if (!engine.isSignedIn()) {
+        MessageBoxW(parent, L"Sign in with Google first.\n\nPlugins \u2192 Notepad++ Sync \u2192 Sign In.",
+                    L"Notepad++ Sync", MB_OK | MB_ICONINFORMATION);
+        return;
+    }
+    if (!engine.hasMasterKey()) {
+        MessageBoxW(parent,
+                    L"This computer does not have your notes yet, so it cannot allow another one.\n\n"
+                    L"On this computer choose Get my notes.\n"
+                    L"On the computer that already has your notes choose Allow another computer, "
+                    L"and type the code shown here.",
+                    L"Notepad++ Sync", MB_OK | MB_ICONINFORMATION);
+        return;
+    }
+    std::string code;
+    if (!prompt(parent, L"Allow another computer", L"Type the code shown on the other computer (ABCD-EFGH):",
+                "", code))
+        return;
+    std::string err;
+    if (engine.approvePairing(code, err)) {
+        MessageBoxW(parent,
+                    L"Allowed. If the other computer's window is still open, it finishes by itself. "
+                    L"You do not type the code again over there.",
+                    L"Notepad++ Sync", MB_OK | MB_ICONINFORMATION);
+    }
+    else {
+        MessageBoxW(parent, widen(err).c_str(), L"Notepad++ Sync", MB_OK | MB_ICONWARNING);
+    }
+}
+
+bool Dialogs::getMyNotes(HWND parent, SyncEngine& engine) {
+    if (!engine.isSignedIn()) {
+        MessageBoxW(parent, L"Sign in with Google first.\n\nPlugins \u2192 Notepad++ Sync \u2192 Sign In.",
+                    L"Notepad++ Sync", MB_OK | MB_ICONINFORMATION);
+        return false;
+    }
+    if (engine.hasMasterKey()) {
+        int replace =
+            MessageBoxW(parent,
+                        L"This computer already has an encryption key.\n\n"
+                        L"Continuing replaces it with the key from the computer that already has your notes. "
+                        L"Notes encrypted only with the key on this computer will not open.\n\n"
+                        L"Continue?",
+                        L"Notepad++ Sync", MB_YESNO | MB_ICONWARNING);
+        if (replace != IDYES)
+            return engine.hasMasterKey();
+    }
+    std::string code, err;
+    if (!engine.pairNewDevice(code, err)) {
+        MessageBoxW(parent, widen(err.empty() ? std::string("Could not start. Try again.") : err).c_str(),
+                    L"Notepad++ Sync", MB_OK | MB_ICONWARNING);
+        return false;
+    }
+    if (!waitForOtherComputer(parent, engine, code)) {
+        if (!engine.hasMasterKey()) {
+            MessageBoxW(
+                parent,
+                L"This computer still does not have the encryption key, so it did not create a new one.\n\n"
+                L"Your notes stay unreadable until the other computer allows this one. "
+                L"Choose Get my notes again when that computer is on.",
+                L"Notepad++ Sync", MB_OK | MB_ICONINFORMATION);
+        }
+        else {
+            MessageBoxW(parent,
+                        L"The other computer has not allowed this one yet. "
+                        L"The encryption key already on this computer was left as it is.",
+                        L"Notepad++ Sync", MB_OK | MB_ICONINFORMATION);
+        }
+        return engine.hasMasterKey();
+    }
+    MessageBoxW(parent,
+                L"This computer can now read your notes. They show up after the next sync, "
+                L"in the folders you choose.",
+                L"Notepad++ Sync", MB_OK | MB_ICONINFORMATION);
+    return true;
+}
+
 // ============================ Devices ============================
 
 namespace
@@ -493,7 +670,8 @@ void fillDevices(HWND dlg, DevicesCtx& c) {
         setText(dlg, ID_DEV_MSG, widen(err));
         return;
     }
-    setText(dlg, ID_DEV_MSG, L"");
+    setText(dlg, ID_DEV_MSG,
+            L"New computer: Get my notes. This one, if it has the notes: Allow another computer.");
     int row = 0;
     for (auto& d : c.devs) {
         std::wstring name = widen(d.name);
@@ -533,8 +711,8 @@ INT_PTR CALLBACK devicesProc(HWND dlg, UINT msg, WPARAM wp, LPARAM lp) {
         makeButton(dlg, ID_DEV_REFRESH, L"Refresh", 12, 222, 90, 26);
         makeButton(dlg, ID_DEV_RENAME, L"Rename", 110, 222, 90, 26);
         makeButton(dlg, ID_DEV_REVOKE, L"Revoke", 208, 222, 90, 26);
-        makeButton(dlg, ID_DEV_PAIR, L"Pair new device", 306, 222, 120, 26);
-        makeButton(dlg, ID_DEV_APPROVE, L"Approve pairing", 12, 256, 120, 26);
+        makeButton(dlg, ID_DEV_PAIR, L"Get my notes", 306, 222, 120, 26);
+        makeButton(dlg, ID_DEV_APPROVE, L"Allow another computer", 12, 256, 190, 26);
         makeButton(dlg, IDOK, L"Close", 402, 256, 90, 26, BS_DEFPUSHBUTTON);
         makeLabel(dlg, L"", 12, 292, 480, 18, ID_DEV_MSG);
         setDefaultFont(dlg);
@@ -577,32 +755,13 @@ INT_PTR CALLBACK devicesProc(HWND dlg, UINT msg, WPARAM wp, LPARAM lp) {
             }
             return TRUE;
         }
-        case ID_DEV_PAIR: {
-            // This device joins: request a code for another device to approve.
-            std::string code, err;
-            if (c.engine->pairNewDevice(code, err)) {
-                std::wstring m = L"Pairing code (valid 5 minutes):\n\n    " + widen(code) +
-                                 L"\n\nOn a device that already has your notes, open Manage Devices → "
-                                 L"Approve pairing and enter this code.";
-                MessageBoxW(dlg, m.c_str(), L"Notepad++ Sync — Pairing", MB_OK | MB_ICONINFORMATION);
-            }
-            else {
-                setText(dlg, ID_DEV_MSG, widen(err));
-            }
+        case ID_DEV_PAIR:
+            Dialogs::getMyNotes(dlg, *c.engine);
+            fillDevices(dlg, c);
             return TRUE;
-        }
-        case ID_DEV_APPROVE: {
-            std::string code;
-            if (prompt(dlg, L"Approve pairing", L"Enter code shown on the new device (ABCD-EFGH):", "",
-                       code)) {
-                std::string err;
-                if (c.engine->approvePairing(code, err))
-                    setText(dlg, ID_DEV_MSG, L"Approved. The new device can now unlock its keys.");
-                else
-                    setText(dlg, ID_DEV_MSG, widen(err));
-            }
+        case ID_DEV_APPROVE:
+            Dialogs::allowAnotherComputer(dlg, *c.engine);
             return TRUE;
-        }
         case IDOK:
         case IDCANCEL:
             EndDialog(dlg, IDOK);
@@ -1091,9 +1250,15 @@ INT_PTR CALLBACK settingsProc(HWND dlg, UINT msg, WPARAM wp, LPARAM lp) {
         case ID_SEC_RECOVERY: {
             std::string rk = c.engine->exportRecoveryKeyWrapped();
             std::wstring m =
-                rk.empty() ? L"No recovery key is stored on this device."
-                           : L"Your recovery key (keep it offline and private):\n\n" + widen(rk) +
-                                 L"\n\nLosing every device AND this key makes your notes unrecoverable.";
+                rk.empty()
+                    ? L"No recovery key is stored on this device.\n\n"
+                      L"A recovery key on another computer does not unlock this one. "
+                      L"This computer gets the encryption key when the other computer "
+                      L"chooses Allow another computer."
+                    : L"Your recovery key (keep it with this computer):\n\n" + widen(rk) +
+                          L"\n\nThis key only unwraps the copy stored for this Windows user. "
+                          L"Typing it on another computer does not open your notes. "
+                          L"The other computer gets the key when you choose Allow another computer here.";
             MessageBoxW(dlg, m.c_str(), L"Notepad++ Sync — Recovery Key",
                         MB_OK | (rk.empty() ? MB_ICONINFORMATION : MB_ICONWARNING));
             return TRUE;
@@ -1197,14 +1362,12 @@ void Dialogs::showSettings(HWND parent, SyncEngine& engine) {
 
 void Dialogs::showFirstRunWizard(HWND parent, SyncEngine& engine) {
     int r = MessageBoxW(parent,
-                        L"Welcome to Notepad++ Sync!\n\n"
-                        L"Setup takes a minute:\n"
-                        L"  1. Sign in with Google, or with email and password\n"
-                        L"  2. Encryption keys are generated on this device (never uploaded)\n"
-                        L"  3. Name this device\n"
-                        L"  4. Choose files/folders to sync\n\n"
-                        L"Google only identifies the account. A second device still needs\n"
-                        L"pairing or your recovery key.\n\n"
+                        L"Welcome to Notepad++ Sync.\n\n"
+                        L"Sign in with Google. If this is your first computer, an encryption key "
+                        L"is created here and never uploaded. If your notes are already on another "
+                        L"computer, that computer allows this one — this setup will not create a "
+                        L"second key.\n\n"
+                        L"You do not type a server address.\n\n"
                         L"Continue?",
                         L"Notepad++ Sync — Setup", MB_YESNO | MB_ICONQUESTION);
     if (r != IDYES)
@@ -1213,16 +1376,46 @@ void Dialogs::showFirstRunWizard(HWND parent, SyncEngine& engine) {
     if (!showSignIn(parent, engine))
         return;
 
+    bool createHere = false;
     if (!engine.hasMasterKey()) {
-        engine.generateMasterKeyIfNeeded();
-        std::string rk = engine.exportRecoveryKeyWrapped();
-        if (!rk.empty()) {
-            std::wstring msg = L"Your recovery key (store it offline, safely):\n\n" + widen(rk) +
-                               L"\n\nIf you lose every device AND this key, your notes cannot be recovered. "
-                               L"There is no password reset for encrypted data. "
-                               L"Signing in with Google does not replace this key.";
-            MessageBoxW(parent, msg.c_str(), L"Notepad++ Sync — Recovery Key", MB_OK | MB_ICONWARNING);
+        int which = MessageBoxW(parent,
+                                L"Are your notes already on another computer?\n\n"
+                                L"Yes — I will open Notepad++ there and choose Allow another computer.\n"
+                                L"No — this is the first computer. Create the encryption key here.",
+                                L"Notepad++ Sync — Setup", MB_YESNOCANCEL | MB_ICONQUESTION);
+        if (which == IDCANCEL) {
+            MessageBoxW(parent,
+                        L"Setup stopped. This computer did not create an encryption key.\n\n"
+                        L"When you are ready, choose Plugins \u2192 Notepad++ Sync \u2192 Get my notes.",
+                        L"Notepad++ Sync", MB_OK | MB_ICONINFORMATION);
+            return;
         }
+        if (which == IDYES) {
+            // Polls until the other computer wraps its master key. Does not mint.
+            Dialogs::getMyNotes(parent, engine);
+        }
+        else {
+            createHere = true;
+        }
+    }
+    // finishFirstRunKeys keeps a key that pairing just installed, even when
+    // createHere is true. It mints only when this is the first computer and
+    // no key is present.
+    auto step = engine.finishFirstRunKeys(createHere);
+    if (step == SyncEngine::FirstRunKeyStep::CreatedNew) {
+        std::string rk = engine.exportRecoveryKeyWrapped();
+        std::wstring msg =
+            rk.empty()
+                ? L"An encryption key was created on this computer, but the recovery key could not be saved."
+                : L"Your recovery key (keep it with this computer):\n\n" + widen(rk) +
+                      L"\n\nThis key only unwraps the copy stored for this Windows user. "
+                      L"Typing it on another computer does not open your notes. "
+                      L"On the other computer, sign in with the same Google account and choose Yes "
+                      L"when asked if your notes are already on another computer. Then, on this "
+                      L"computer, choose Allow another computer and type the code it shows.\n\n"
+                      L"If this computer is lost before another one is allowed, the notes on the "
+                      L"server cannot be read. Google sign-in does not replace this key.";
+        MessageBoxW(parent, msg.c_str(), L"Notepad++ Sync — Recovery Key", MB_OK | MB_ICONWARNING);
     }
     // Let the user name the device right away.
     std::string name;
@@ -1232,8 +1425,17 @@ void Dialogs::showFirstRunWizard(HWND parent, SyncEngine& engine) {
         engine.saveSettings();
     }
     Dialogs::showSyncedFiles(parent, engine);
-    MessageBoxW(parent, L"Setup complete. Sync now runs in the background — just use Notepad++.",
-                L"Notepad++ Sync", MB_OK | MB_ICONINFORMATION);
+    if (engine.hasMasterKey()) {
+        MessageBoxW(parent, L"Setup complete. Sync now runs in the background — just use Notepad++.",
+                    L"Notepad++ Sync", MB_OK | MB_ICONINFORMATION);
+    }
+    else {
+        MessageBoxW(parent,
+                    L"Setup is not finished. This computer does not have the encryption key yet, "
+                    L"so notes from your other computer cannot open here.\n\n"
+                    L"When that computer is on, choose Plugins \u2192 Notepad++ Sync \u2192 Get my notes.",
+                    L"Notepad++ Sync", MB_OK | MB_ICONWARNING);
+    }
 }
 
 void Dialogs::showAbout(HWND parent) {

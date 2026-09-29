@@ -9,7 +9,7 @@
 namespace npsync
 {
 
-constexpr int kMenuCount = 10;
+constexpr int kMenuCount = 12;
 extern const wchar_t kPluginName[];
 
 // Menu command indices.
@@ -25,6 +25,8 @@ enum MenuCmd
     CmdSettings,
     CmdPauseSync,
     CmdAbout,
+    CmdAllowComputer,
+    CmdGetMyNotes,
 };
 
 // Called from DllMain.cpp (the extern "C" glue).

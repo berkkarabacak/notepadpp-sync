@@ -16,6 +16,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   password account without removing the password.
 
 ### Fixed
+- A second computer signed in with the same Google account can receive the
+  existing master key. **Get my notes** shows a code and polls until the
+  computer that already has the notes chooses **Allow another computer**.
+  The first-run wizard does not mint a new key when that wrapped key is
+  already installed, or while it is still waiting. The recovery key remains
+  a DPAPI secret on the computer that created it and does not unlock the
+  second computer. Fresh installs use `https://sync.berkkarabacak.com`.
 - Batch upload stores the ciphertext blob before committing file metadata,
   matching single-file upload. A failed blob write no longer leaves a head
   record other clients can see.
