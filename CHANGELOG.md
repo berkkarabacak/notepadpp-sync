@@ -25,6 +25,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   `NPSYNC_TRUSTED_PROXIES`.
 
 ### Changed
+- The plugin's default Backend URL is `https://sync.berkkarabacak.com`.
+  A fresh install does not use `https://sync.example.com`. A saved
+  placeholder (or a blank URL) is treated as unset on the next start.
+  Any other saved URL, including `http://localhost:8080`, is kept.
+  Changing Backend URL still requires a Notepad++ restart: **Save**
+  writes the file, and the running process keeps the URL it loaded at
+  startup.
 - Docs describe the cipher that ships: AES-256-GCM. The recovery key is
   documented as about 100 bits (20 symbols from a 32-character alphabet).
 - Security reports go through GitHub private vulnerability reporting.

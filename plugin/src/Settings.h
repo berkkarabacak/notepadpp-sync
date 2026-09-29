@@ -10,6 +10,18 @@
 namespace npsync
 {
 
+// Shipping Backend URL. A fresh install uses this host. Another server,
+// including http://localhost:8080, is a settings override.
+inline constexpr char kDefaultBackendUrl[] = "https://sync.berkkarabacak.com";
+
+// Missing, empty, or the retired placeholder all mean "use the shipping default".
+// Any other stored value, including a self-hosted URL, is kept.
+inline std::string resolveBackendUrl(const std::string& stored, bool keyPresent) {
+    if (!keyPresent || stored.empty() || stored == "https://sync.example.com")
+        return kDefaultBackendUrl;
+    return stored;
+}
+
 enum class SessionSyncMode
 {
     FilesOnly = 0,
@@ -42,7 +54,7 @@ struct Settings
     std::string accountId;
 
     // Advanced
-    std::string backendUrl = "https://sync.example.com";
+    std::string backendUrl = kDefaultBackendUrl;
     bool debugLogging = false;
     std::wstring databaseLocation; // empty = default
     int versionRetention = 30;

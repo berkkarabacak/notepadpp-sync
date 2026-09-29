@@ -22,7 +22,7 @@ Edit `.env`:
 | `TOKEN_SIGNING_KEY` | `openssl rand -hex 32` (64 hex characters) |
 | `BASE_URL` | `http://localhost:8080` |
 
-`BASE_URL` is the URL the server puts in device-pairing payloads and the URL you type into the plugin (*Settings → Advanced → Backend URL*). For this demo they are the same.
+`BASE_URL` is the URL the server puts in device-pairing payloads and the URL you type into the plugin (*Settings → Advanced → Backend URL*). For this demo they are the same. A fresh plugin install uses `https://sync.berkkarabacak.com`, so this demo replaces that with `http://localhost:8080`, chooses **Save**, and restarts Notepad++. **Save** does not retarget the process that is already running.
 
 ```bash
 docker compose up -d --build
@@ -61,6 +61,9 @@ machine, plain `http://localhost:8080` is fine.
 
 Then in the plugin: **Settings → Advanced → Backend URL** →
 `https://sync.myserver.com` (or `http://localhost:8080` for local testing).
+A fresh install uses `https://sync.berkkarabacak.com`. Replace that when
+this server is yours, choose **Save**, and restart Notepad++. **Save**
+does not retarget a Notepad++ process that is already running.
 
 ## Configuration
 

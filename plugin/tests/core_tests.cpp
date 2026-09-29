@@ -1,9 +1,20 @@
-// Plugin core test suite — runs under ctest on CI (Windows).
-// Plain assertions keep the plugin test binary dependency-free.
+// Plugin test suite — runs under ctest on CI (Windows).
+// Plain assertions. Settings persistence is linked in so the shipping
+// Backend URL can be checked against a real settings.json.
 #include <cstdio>
 #include <cstring>
+#include <fstream>
 #include <string>
 
+#ifndef WIN32_LEAN_AND_MEAN
+#define WIN32_LEAN_AND_MEAN
+#endif
+#ifndef NOMINMAX
+#define NOMINMAX
+#endif
+#include <windows.h>
+
+#include "Settings.h"
 #include "core/Crypto.h"
 #include "core/IgnoreRules.h"
 #include "core/Merge.h"
@@ -266,6 +277,76 @@ void testVersionVectors() {
     CHECK(parsed.equal(m));
 }
 
+// ---- settings: shipping Backend URL ----
+
+void testDefaultBackendUrl() {
+    Settings fresh;
+    CHECK(fresh.backendUrl == "https://sync.berkkarabacak.com");
+    CHECK(std::string(kDefaultBackendUrl) == "https://sync.berkkarabacak.com");
+    CHECK(fresh.backendUrl == kDefaultBackendUrl);
+    CHECK(fresh.backendUrl.find("example.com") == std::string::npos);
+
+    // No settings file: the in-memory default is what a fresh install uses.
+    CHECK(resolveBackendUrl("", false) == kDefaultBackendUrl);
+    // Omitted, blank, or the retired placeholder must not stick.
+    CHECK(resolveBackendUrl("https://sync.example.com", true) == kDefaultBackendUrl);
+    CHECK(resolveBackendUrl("https://sync.example.com", false) == kDefaultBackendUrl);
+    CHECK(resolveBackendUrl("", true) == kDefaultBackendUrl);
+    // Self-host and local development overrides stay.
+    CHECK(resolveBackendUrl("http://localhost:8080", true) == "http://localhost:8080");
+    CHECK(resolveBackendUrl("http://127.0.0.1:8080", true) == "http://127.0.0.1:8080");
+    CHECK(resolveBackendUrl("https://sync.myserver.com", true) == "https://sync.myserver.com");
+
+    wchar_t temp[MAX_PATH];
+    DWORD n = GetTempPathW(MAX_PATH, temp);
+    CHECK(n > 0 && n < MAX_PATH);
+    std::wstring dir = std::wstring(temp) + L"npsync-backend-url-test";
+    CreateDirectoryW(dir.c_str(), nullptr);
+    std::wstring settingsFile = dir + L"\\settings.json";
+    DeleteFileW(settingsFile.c_str());
+
+    SettingsStore store(dir);
+    Settings missingFile;
+    CHECK(!store.load(missingFile));
+    CHECK(missingFile.backendUrl == "https://sync.berkkarabacak.com");
+
+    auto writeJson = [&](const std::string& body) {
+        std::ofstream f(settingsFile, std::ios::binary | std::ios::trunc);
+        CHECK(static_cast<bool>(f));
+        f << body;
+    };
+
+    writeJson("{\n  \"device_name\": \"Laptop\"\n}\n");
+    Settings omitted;
+    omitted.backendUrl = "https://sync.example.com";
+    CHECK(store.load(omitted));
+    CHECK(omitted.backendUrl == "https://sync.berkkarabacak.com");
+    CHECK(omitted.deviceName == "Laptop");
+
+    writeJson("{\n  \"backend_url\": \"https://sync.example.com\"\n}\n");
+    Settings retired;
+    CHECK(store.load(retired));
+    CHECK(retired.backendUrl == "https://sync.berkkarabacak.com");
+
+    writeJson("{\n  \"backend_url\": \"\"\n}\n");
+    Settings blank;
+    CHECK(store.load(blank));
+    CHECK(blank.backendUrl == "https://sync.berkkarabacak.com");
+
+    Settings custom;
+    custom.backendUrl = "http://localhost:8080";
+    custom.deviceName = "Dev";
+    CHECK(store.save(custom));
+    Settings roundTrip;
+    roundTrip.backendUrl = "https://sync.example.com";
+    CHECK(store.load(roundTrip));
+    CHECK(roundTrip.backendUrl == "http://localhost:8080");
+    CHECK(roundTrip.deviceName == "Dev");
+
+    DeleteFileW(settingsFile.c_str());
+    RemoveDirectoryW(dir.c_str());
+}
+
 int main() {
     testCryptoRoundTrip();
     testEmptyCiphertextAuth();
@@ -285,6 +366,7 @@ int main() {
     testPathNormalization();
     testJoinInsideRoot();
     testVersionVectors();
+    testDefaultBackendUrl();
 
     std::printf("%d checks, %d failures\n", g_checks, g_failures);
     return g_failures == 0 ? 0 : 1;

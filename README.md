@@ -22,7 +22,7 @@ Notepad++ Sync is a native Notepad++ plugin plus a small self-hostable backend. 
 - **Version history** — browse and restore recent versions of any file (configurable retention; 30 versions per file by default).
 - **File selection** — sync individual files or whole folders, with `.gitignore`-style exclude rules and a local `.npsyncignore` file.
 - **Session sync (optional)** — open tabs, selected tab, cursor and scroll positions. Unsaved documents are **never** uploaded by default.
-- **Self-hosted** — you run the server (`docker compose up -d`) and point the plugin at it. There is no hosted service to sign up for; the whole design assumes the server is yours. No external object storage required.
+- **Ready to use, and self-hostable** — a fresh install talks to `https://sync.berkkarabacak.com`. You do not type a server address. Self-hosters can point the plugin at their own server under *Settings → Advanced → Backend URL* (for example `http://localhost:8080`) and restart Notepad++. No external object storage required.
 - **Privacy-first** — zero analytics or telemetry.
 
 ## Installation
@@ -35,11 +35,9 @@ Notepad++ Sync is a native Notepad++ plugin plus a small self-hostable backend. 
    ```
    C:\Program Files\Notepad++\plugins\NppSync\
    ```
-4. Stand up a server first (see *For self-hosters* below), then start Notepad++ →
-   **Plugins → Notepad++ Sync → Settings → Advanced** and set *Backend URL* to it.
-   The default is a placeholder and will not connect.
-5. **Plugins → Notepad++ Sync → Sign In**.
-6. Follow the first-run setup: **Sign in with Google** (or email and password, for an existing account), generate encryption keys, name this device, choose files/folders, done.
+4. Start Notepad++. **Plugins → Notepad++ Sync** is in the menu.
+   A fresh install uses `https://sync.berkkarabacak.com`. You do not type a server address.
+5. Follow the first-run setup: **Sign in with Google** (or email and password, for an existing account), generate encryption keys, name this device, choose files/folders, done.
 
 See the [User Guide](docs/user-guide.md) for details and screenshots.
 
@@ -53,7 +51,7 @@ cp .env.example .env
 docker compose up -d
 ```
 
-For a laptop demo, `BASE_URL=http://localhost:8080` and the plugin Backend URL is the same. Optional Google sign-in uses `GOOGLE_CLIENT_ID`, `GOOGLE_CLIENT_SECRET`, and `GOOGLE_REDIRECT_URI`. See [Self-hosting](docs/self-hosting.md).
+For a laptop demo, `BASE_URL=http://localhost:8080`. The plugin ships pointed at `https://sync.berkkarabacak.com`, so set **Settings → Advanced → Backend URL** to that same `http://localhost:8080`, choose **Save**, and restart Notepad++. **Save** does not retarget a Notepad++ process that is already running. Optional Google sign-in uses `GOOGLE_CLIENT_ID`, `GOOGLE_CLIENT_SECRET`, and `GOOGLE_REDIRECT_URI`. See [Self-hosting](docs/self-hosting.md).
 
 ## Basic usage
 

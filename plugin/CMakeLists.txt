@@ -101,8 +101,8 @@ endif()
 # ---- tests ----
 if(NPSYNC_BUILD_TESTS)
     enable_testing()
-    add_executable(npsync_core_tests tests/core_tests.cpp)
-    target_link_libraries(npsync_core_tests PRIVATE npsync_core)
+    add_executable(npsync_core_tests tests/core_tests.cpp src/Settings.cpp)
+    target_link_libraries(npsync_core_tests PRIVATE npsync_core nlohmann_json::nlohmann_json crypt32)
     if(MSVC)
         target_compile_options(npsync_core_tests PRIVATE /W4)
         set_property(TARGET npsync_core_tests PROPERTY MSVC_RUNTIME_LIBRARY
