@@ -48,9 +48,12 @@ add_library(npsync_core STATIC
     src/core/PathUtil.h
     src/core/VersionVector.cpp
     src/core/VersionVector.h
+    src/core/KeySetup.cpp
+    src/core/KeySetup.h
 )
 target_include_directories(npsync_core PUBLIC src)
 target_link_libraries(npsync_core PUBLIC bcrypt)
+target_link_libraries(npsync_core PRIVATE nlohmann_json::nlohmann_json)
 if(MSVC)
     target_compile_options(npsync_core PRIVATE /W4)
 endif()

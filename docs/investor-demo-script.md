@@ -7,13 +7,11 @@ script. The release checklist is
 setup is the [Investor demo](self-hosting.md#investor-demo-one-laptop)
 section of [self-hosting.md](self-hosting.md).
 
-Say only what you just did. This script syncs a file on one device and
-opens **Manage Devices → Pair new device** so the room can see a code.
-Do not click **Approve pairing** on this PC: the server rejects it with
-`cannot approve your own pairing request`. The menu never calls the poll
-that installs a wrapped key (`completePairing`). Two Notepad++ windows
-under the same Windows user are one device — they share
-`%APPDATA%\Notepad++Sync\`. The two-device checklist is
+Say only what you just did. This script syncs a file on one device. A
+second computer is a second Windows user, VM, or PC — two Notepad++
+windows under the same Windows user share `%APPDATA%\Notepad++Sync\` and
+are one device. The clicks that move the encryption key are in the
+[user guide](user-guide.md#5-adding-a-second-computer). The checklist is
 [acceptance-test-script.md](acceptance-test-script.md).
 
 ## Before you start (not on the clock)
@@ -77,10 +75,8 @@ sign-in. Close with **Cancel** so you do not change it.
 ## 2. Create the account (~2 min)
 
 The welcome dialog **Notepad++ Sync — Setup** should be on screen. Choose
-**Yes**. That dialog says a second device still needs pairing or the
-recovery key. Pairing in this room is step 5 (show the code only). A
-fresh install cannot type the recovery key in to unlock notes; the next
-dialog is the on-screen warning, not a restore flow.
+**Yes**. It says you do not type a server address. For this room you
+already set Backend URL in the step above, before the wizard.
 
 **Notepad++ Sync — Sign In:**
 
@@ -92,21 +88,16 @@ Skip **Sign in with Google** unless the optional block below applies. If
 Google is not configured, that button returns “Google sign-in is not
 configured on this server.”
 
-Then:
+Then setup asks **Are your notes already on another computer?** Choose
+**No** — this is the first computer.
 
 1. **Notepad++ Sync — Recovery Key** shows a key starting with `NPSYNC-`.
-   The dialog says to store it offline, and that losing every device and
-   this key means the notes cannot be recovered. There is no password
-   reset that recovers them. Do not read the key out. **OK**.
-
-   That sentence is the intended-design warning printed on the dialog.
-   What the plugin stores is local: `recovery_key_display` and
-   `recovery_wrapped` are DPAPI secrets for this Windows user
-   (`%APPDATA%\Notepad++Sync\secrets\`). `unlockWithRecoveryKey` only
-   unwraps that local `recovery_wrapped` blob, and no menu calls it. A
-   new install has neither secret, and the first-run wizard generates a
-   new master key instead. Do not tell the room that another PC can use
-   the key on screen.
+   The dialog says this key only unwraps the copy stored for this Windows
+   user, and that typing it on another computer does not open the notes.
+   That is accurate. `recovery_key_display` and `recovery_wrapped` are
+   DPAPI secrets under `%APPDATA%\Notepad++Sync\secrets\`. They are not
+   uploaded. Do not read the key out. **OK**. Do not tell the room that
+   another PC can use the key on screen.
 2. **Name this device.** Enter `Laptop-A` again. **OK**.
 3. **Notepad++ Sync — Synced Files/Folders → Add Folder…** and pick the
    demo folder. **Close**.
@@ -124,8 +115,9 @@ user, or Google returns `access_denied`.
 
 On **Notepad++ Sync — Sign In**, click **Sign in with Google**. The system
 browser opens. Finish there. The dialog says “Waiting for Google… finish
-in the browser, then return here.” Then the same recovery-key, device-name,
-and **Add Folder…** steps as above.
+in the browser, then return here.” Then choose **No** (this is the first
+computer), and the same recovery-key, device-name, and **Add Folder…**
+steps as above.
 
 Google only identifies the account. It is not an encryption key. Say that
 in one line and move on.
@@ -141,46 +133,34 @@ pending uploads and downloads at 0. The acceptance script’s basic case
 shows up within about 5 seconds; if the window still says pending, wait
 one cycle or hit **Sync Now** again. **Close**.
 
-## 5. Pairing story (~2 min)
+## 5. What a second computer does (~1 min, say it; do the clicks only if that computer is in the room)
 
-Stay on this PC. **Plugins → Notepad++ Sync → Manage Devices**.
+Stay on this PC unless a second Windows user, VM, or laptop is signed in
+as the same account and is waiting on **Get my notes**.
 
-Click **Pair new device** only. The server returns a code and a dialog
-shows it (shape `ABCD-EFGH`, valid 5 minutes, single-use, alphabet without
-`0`/`O`/`1`/`I`/`L`). The dialog says to enter that code on a device that
-already has the notes: **Manage Devices → Approve pairing**.
+On that other computer the setup question is **Yes** (notes are already
+on another computer). A code like `ABCD-EFGH` stays on screen for about
+5 minutes. That window calls `completePairing` until this PC allows it.
+The wizard does not mint a second master key while it waits, and it does
+not mint after the wrapped key is installed.
 
-Do **not** click **Approve pairing** on this same PC. It will fail.
-**Pair new device** recorded this device as the requester. Approving here
-sends the same device id, and `pairApprove` rejects it when
-`RequestingDevice` is the current device
-(`server/internal/api/device_handlers.go`) with
-`cannot approve your own pairing request`. The status line will not say
-“Approved. The new device can now unlock its keys.”
-
-Say what a second device that is already unlocked would do next. That
-device is another Windows user, VM, or laptop, already signed in and
-holding this account’s master key — not a second Notepad++ window on this
-PC. There, **Manage Devices → Approve pairing** takes the code, wraps the
-master key with AES-256-GCM under a key derived from the code, and uploads
-that blob. The server stores it and cannot read it
+On **this** PC: **Plugins → Notepad++ Sync → Allow another computer**,
+type the code. This PC wraps the master key with AES-256-GCM under a key
+derived from the code and uploads that blob. The server stores it and
+cannot read it
 ([protocol — device pairing](../protocol/docs/protocol-v1.md#device-pairing-key-transfer)).
+The other window then finishes by itself.
 
-The menu does not call `completePairing` and does not poll
-`POST /devices/pair` with `action: poll`, so the requesting device never
-installs that wrapped key from the dialog, even after a real approval on
-another device. The first-run wizard on a second PC also generates a new
-local master key when that PC has none, which is not this PC’s key.
+Do **not** choose **Allow another computer** on the computer that is
+showing the code. The server rejects it with
+`cannot approve your own pairing request`. The dialog explains that in
+plain language. Two Notepad++ windows here are still one device.
 
-Google or a password does not carry the master key. The recovery key from
-step 2 does not either.
-
-Do not promise the note will show up on another PC in this sitting. The
-full two-device path is
-[acceptance-test-script.md](acceptance-test-script.md) (step 0.4 requests
-on the new device and approves on a device that already has the notes).
-Use it when you have that second Windows user, VM, or laptop — not this
-10-minute script.
+If you do not have that second computer in the room, say the paragraph
+above and move on. Do not start **Get my notes** on this PC and then try
+to allow it here. Google, the password, and the recovery key from step 2
+do not carry the master key. The click-by-click list is
+[Adding a second computer](user-guide.md#5-adding-a-second-computer).
 
 ## 6. One security sentence (~30 s)
 
@@ -205,8 +185,8 @@ on the projector.
 | `device_name required` | **Settings → Security → This device name**, **Save**, restart, create the account again. |
 | Google button errors | Both `GOOGLE_CLIENT_ID` and `GOOGLE_CLIENT_SECRET` set, redirect URI matches `BASE_URL`, test user listed. Otherwise use email. |
 | File never leaves the laptop | A folder was added under **Synced Files/Folders**, and the file is inside it. **Sync Now**. |
-| You expected the file on a second PC | This script does not do that. See step 5. The long path is the acceptance script. |
-| **Approve pairing** on this PC | Expected failure: `cannot approve your own pairing request`. Leave that button alone. See step 5. |
+| You expected the file on a second PC | That computer must be waiting on **Get my notes**, and this one must choose **Allow another computer**. See step 5 and the user guide. |
+| **Allow another computer** on the PC that is showing the code | Expected failure. That PC created the code. Allow it from the PC that already has the notes. |
 
 Logs, if you need them after the room:
 `%APPDATA%\Notepad++Sync\logs\npsync-YYYYMM.log`.

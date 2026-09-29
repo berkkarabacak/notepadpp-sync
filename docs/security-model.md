@@ -11,10 +11,15 @@
    the server side only. Google sign-in is the same kind of check: the
    server validates a Google ID token and then discards it. Neither one is
    an encryption key.
-4. **There is no password reset for encrypted data.** The master key exists
-   only on your devices, wrapped by your recovery key or pairing codes.
-   Losing all devices *and* the recovery key means permanent data loss —
-   this is a deliberate design property, not a bug.
+4. **There is no password reset for encrypted data.** The master key is
+   created on the first computer. Another computer receives it only when
+   that first computer wraps it under a one-time pairing code; the server
+   stores the wrapped blob and cannot read the key. The recovery key shown
+   at first setup wraps the master key in a DPAPI secret for that Windows
+   user (`%APPDATA%\Notepad++Sync\secrets\`). It is not uploaded. Typing it
+   on another computer does not install the master key. If every computer
+   that holds the master key is lost before another computer is allowed,
+   the ciphertext on the server cannot be decrypted.
 
 ## Key hierarchy
 
@@ -27,7 +32,9 @@ master key (32 bytes, generated locally, CSPRNG)
 
 The recovery key is `NPSYNC-` plus 20 characters from a 32-symbol alphabet
 (5 bits each, about 100 bits). It only wraps the 32-byte master key. The
-master key is what encrypts files.
+master key is what encrypts files. The wrapped recovery blob is stored with
+DPAPI on the computer that created the key. It is not sent to the server,
+so the recovery key does not unlock a different computer.
 
 - Master key storage on device: DPAPI-protected (`%APPDATA%\Notepad++Sync\
   secrets\`), bound to the Windows user account.

@@ -27,12 +27,16 @@ into the issue you file.
 - [ ] **0.2** First-run wizard appears on A: create account
       `acceptance@test.dev`, device name `TestLaptop-A`.
 - [ ] **0.3** Recovery key `NPSYNC-…` is displayed once; write it down.
-- [ ] **0.4** On B: sign in to the same account, device name `TestLaptop-B`.
-      Google sign-in uses the same Google account; it does not copy the
-      encryption key. Pairing or the recovery key is still required.
-      Email/password remains available for accounts created that way.
-      Use the **pairing code flow** (request on B, approve on A) — keys
-      transfer without typing the recovery key.
+- [ ] **0.4** On B: sign in with the same Google account (or the same email
+      and password). Google sign-in does not copy the encryption key. When
+      setup asks if notes are already on another computer, choose **Yes**.
+      Leave the code on screen. On A choose
+      **Plugins → Notepad++ Sync → Allow another computer** and type that
+      code. B's window must close by itself and B must then decrypt a note
+      created on A. B must not show a new `NPSYNC-` recovery key for this
+      step. The recovery key written down on A does not unlock B. Two
+      Notepad++ windows on one Windows user are one device; use a second
+      Windows user, VM, or PC for B.
 - [ ] **0.5** Add sync folder `C:\SyncTest` on both machines.
 
 ## 1. Basic propagation

@@ -24,18 +24,23 @@ type a server address.
 
 The first time the plugin loads, a short setup runs:
 
-1. **Sign in with Google** (the primary button). Google only identifies the
-   account. It is not used to encrypt files, and the plugin never stores a
-   Google token. Email and password remain for an account you already
-   created that way, and for a server that has not configured Google.
-   A Google-only account has no password.
-2. **Encryption keys are generated on your device.** You'll see a recovery
-   key like `NPSYNC-XXXX-XXXX-XXXX-XXXX-XXXX`. **Write it down and keep it
-   offline.** If you lose every device *and* this key, your notes are
-   unrecoverable — by design, nobody (including the server) can reset it.
+1. **Sign in with Google** (the primary button). Use the same Google account
+   on every computer. Google only identifies the account. It is not the
+   encryption key, and the plugin never stores a Google token. Email and
+   password remain for an account you already created that way.
+2. **Are your notes already on another computer?**
+   - **No** — this is the first computer. An encryption key is created here
+     and is not uploaded. You will see a recovery key like
+     `NPSYNC-XXXX-…`. Keep it with this computer. **Typing that key on
+     another computer does not open your notes.** It only unwraps a copy
+     stored for this Windows user. If this computer is lost before another
+     computer is allowed, the notes on the server cannot be read.
+   - **Yes** — see [Adding a second computer](#5-adding-a-second-computer).
+     This computer waits and does **not** create its own key.
 3. **Name this device** (e.g. `Laptop-Home`) so you recognize it later.
 4. **Choose files/folders to sync.**
-5. Done. Sync runs quietly in the background from now on.
+5. Done, once this computer has the encryption key. Sync runs in the
+   background from then on.
 
 To use a server you run yourself, open **Plugins → Notepad++ Sync →
 Settings → Advanced**, set **Backend URL** (for example
@@ -76,16 +81,42 @@ the edits don't overlap. When they do, **Conflicts** in the menu offers:
 
 Nothing is ever silently discarded.
 
-## 5. Adding a second laptop
+## 5. Adding a second computer
 
-1. Install the plugin on the new laptop and sign in with the same Google
-   account (or the same email and password). Signing in does not copy the
-   encryption key.
-2. On the new device: **Manage Devices → pair** — a code like `ABCD-EFGH`
-   appears.
-3. On any existing device: approve the pairing and enter the code. The
-   encryption key is transferred securely (the server can't read it).
-4. Alternatively, use your offline recovery key.
+A second computer means another PC, or another Windows user on this PC.
+Two Notepad++ windows under the same Windows user are **one** device: they
+share `%APPDATA%\Notepad++Sync\`. Opening a second window does not copy the
+key, and that window cannot allow itself.
+
+You still click on each computer. You type one short code. You do not type
+a web address.
+
+1. On the **new** computer, install the plugin and start Notepad++.
+2. In the setup window, choose **Yes**, then **Sign in with Google** with
+   the same Google account.
+3. When asked whether your notes are already on another computer, choose
+   **Yes**. A window stays open and shows a code like `ABCD-EFGH` (about
+   5 minutes). Leave it open. This computer does not create a new
+   encryption key while it waits.
+4. On the **computer that already has the notes**, choose
+   **Plugins → Notepad++ Sync → Allow another computer** and type that
+   code. That computer wraps its encryption key so the server cannot read
+   it, and sends the wrapped key.
+5. The window on the new computer closes by itself when the key arrives.
+   Name the computer, choose the folder, and the notes decrypt there after
+   the next sync.
+
+If you closed the waiting window, or an older version of the plugin already
+created a different key on the new computer: on the new computer choose
+**Plugins → Notepad++ Sync → Get my notes**, leave the code on screen, and
+do step 4 on the computer that already has the notes. If a key is already
+there, **Get my notes** asks before replacing it.
+
+**Allow another computer** on the computer that is showing the code fails
+on purpose. That computer asked for the code. The computer that already
+has the notes is the one that types it.
+
+The recovery key shown on the first computer does not unlock the second.
 
 ## 6. Choosing what to sync
 

@@ -27,6 +27,7 @@
 #include "Settings.h"
 #include "core/Crypto.h"
 #include "core/IgnoreRules.h"
+#include "core/KeySetup.h"
 
 namespace npsync
 {
@@ -88,14 +89,33 @@ class SyncEngine {
 
     // Key management.
     bool hasMasterKey() const;
-    bool generateMasterKeyIfNeeded(); // first-run setup
+    // First-run wizard. createIfMissing is true only when the user said this
+    // is the first computer. A key already on the device — including one
+    // completePairing just installed — is kept. The wizard must not mint in
+    // that case.
+    enum class FirstRunKeyStep
+    {
+        KeptExisting,
+        CreatedNew,
+        RefusedToMint
+    };
+    FirstRunKeyStep finishFirstRunKeys(bool createIfMissing);
+    bool generateMasterKeyIfNeeded(); // calls finishFirstRunKeys(true)
     bool unlockWithRecoveryKey(const std::string& recoveryKey);
     std::string exportRecoveryKeyWrapped(); // for showing once to the user
     bool pairNewDevice(std::string& codeOut, std::string& errorOut);
+    // Existing device: wrap this device's master key under the code and
+    // upload the opaque blob. Does not install a key.
     bool approvePairing(const std::string& code, std::string& errorOut);
-    // Poll once for approval of a previously requested code; on approval the
-    // wrapped master key is unwrapped with the code and installed locally.
-    bool completePairing(const std::string& code, std::string& errorOut);
+    // New device: one poll. Pending means keep waiting. Installed means the
+    // other computer's wrapped master key is now the key on this device.
+    enum class PairingStatus
+    {
+        Pending,
+        Installed,
+        Failed
+    };
+    PairingStatus completePairing(const std::string& code, std::string& errorOut);
 
     // Manual actions.
     void syncNow();
@@ -177,6 +197,8 @@ class SyncEngine {
     static std::string nowTimeString();
     // Persists an NPSync token response. Does not touch the master key.
     bool acceptTokenResponse(const ApiResponse& r, std::string& errorOut, const char* failLabel);
+    // DPAPI recovery wrap for a key minted on this Windows user. Not uploaded.
+    bool writeLocalRecoveryWrap();
 
     SettingsStore* store_ = nullptr;
     Settings* settings_ = nullptr;
