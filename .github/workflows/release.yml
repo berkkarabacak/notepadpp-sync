@@ -24,7 +24,21 @@ jobs:
       - name: Run all tests
         run: ctest --test-dir plugin/build -C Release --output-on-failure
 
-      - name: Package ZIP + checksums
+      - name: Install NSIS
+        shell: pwsh
+        run: |
+          $ErrorActionPreference = "Stop"
+          choco install nsis -y --no-progress
+          if ($LASTEXITCODE -ne 0 -and $LASTEXITCODE -ne 3010) { throw "choco install nsis failed with exit code $LASTEXITCODE" }
+          $makensis = @(
+            "${env:ProgramFiles(x86)}\NSIS\makensis.exe",
+            "$env:ProgramFiles\NSIS\makensis.exe"
+          ) | Where-Object { Test-Path -LiteralPath $_ } | Select-Object -First 1
+          if (-not $makensis) { throw "makensis.exe was not found after installing NSIS." }
+          Split-Path -Parent $makensis | Out-File -FilePath $env:GITHUB_PATH -Append -Encoding ascii
+          Write-Host "NSIS: $makensis"
+
+      - name: Package ZIP, installer, and checksums
         shell: pwsh
         run: |
           $v = "$env:GITHUB_REF_NAME".TrimStart('v')
@@ -36,6 +50,8 @@ jobs:
           files: |
             dist/NotepadPlusPlusSync-v*-win64.zip
             dist/NotepadPlusPlusSync-v*-win64.zip.sha256
+            dist/NotepadPlusPlusSync-v*-win64-setup.exe
+            dist/NotepadPlusPlusSync-v*-win64-setup.exe.sha256
           generate_release_notes: true
 
   server-release:

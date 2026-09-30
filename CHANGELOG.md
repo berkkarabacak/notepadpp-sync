@@ -8,6 +8,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ## [Unreleased]
 
 ### Added
+- A double-click Windows installer,
+  `NotepadPlusPlusSync-vX.Y.Z-win64-setup.exe`, published next to the
+  release ZIP. It finds 64-bit Notepad++ (Program Files, or the per-user
+  install folder), asks before closing Notepad++, and copies `NppSync.dll`
+  and `deps\` into `plugins\NppSync`. It does not ask for a server address.
 - Google SSO (Authorization Code + PKCE) as the primary sign-in path.
   The server holds the OAuth client secret; the plugin opens the system
   browser and polls. Google identity only authenticates the account.
