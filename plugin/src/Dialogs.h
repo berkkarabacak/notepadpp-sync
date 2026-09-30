@@ -46,9 +46,10 @@ bool getMyNotes(HWND parent, SyncEngine& engine);
 // Settings (general/files/session/security/advanced tabs).
 void showSettings(HWND parent, SyncEngine& engine);
 
-// First-run setup wizard. Signs in, then either keeps a key delivered by
-// pairing or mints one on the first computer. Does not mint when pairing
-// already installed a key.
+// First-run setup wizard. Signs in, asks whether notes are already on
+// another computer, then either keeps a key delivered by pairing or mints
+// one on the first computer and shows the recovery key. Does not mint when
+// pairing already installed a key. Does not open the synced-files window.
 void showFirstRunWizard(HWND parent, SyncEngine& engine);
 
 void showAbout(HWND parent);
