@@ -2,6 +2,7 @@
 // design: standard controls, no custom chrome, system fonts.
 #include "Dialogs.h"
 
+#include "DialogLayout.h"
 #include "Logger.h"
 #include "Notepad_plus_msgs.h"
 #include "SyncEngine.h"
@@ -69,7 +70,7 @@ HWND makeButton(HWND dlg, int id, const wchar_t* text, int x, int y, int w, int 
 }
 
 HWND makeCheck(HWND dlg, int id, const wchar_t* text, int x, int y, int w, bool checked) {
-    HWND h = makeButton(dlg, id, text, x, y, w, 20, BS_AUTOCHECKBOX);
+    HWND h = makeButton(dlg, id, text, x, y, w, layout::kCheckHeight, BS_AUTOCHECKBOX);
     SendMessageW(h, BM_SETCHECK, checked ? BST_CHECKED : BST_UNCHECKED, 0);
     return h;
 }
@@ -113,8 +114,9 @@ struct DialogMemory
         d->cdit = 0;
         d->x = 10;
         d->y = 10;
-        d->cx = (short)(w / 2);
-        d->cy = (short)(h / 2);
+        // w and h are pixels. See DialogLayout.h for the dialog-unit conversion.
+        d->cx = (short)layout::toDlgX(w);
+        d->cy = (short)layout::toDlgY(h);
         auto* p = reinterpret_cast<wchar_t*>(d + 1);
         *p++ = 0;
         *p++ = 0;
@@ -196,17 +198,18 @@ bool prompt(HWND parent, const std::wstring& title, const std::wstring& label, c
     c.label = label;
     c.initial = widen(initial);
     DialogMemory mem;
-    mem.begin(title.c_str(), 360, 120);
+    mem.begin(title.c_str(), layout::kPrompt.pixelW, layout::kPrompt.pixelH);
     // Controls are created in the proc; template only provides the frame.
     INT_PTR r = DialogBoxIndirectParamW(
         pluginInstance(), mem.get(), parent,
         [](HWND dlg, UINT msg, WPARAM wp, LPARAM lp) -> INT_PTR {
             if (msg == WM_INITDIALOG) {
+                // dialog-frame:kPrompt
                 // Create the prompt controls lazily (keeps template trivial).
-                makeLabel(dlg, L"", 12, 12, 336, 20, 100);
-                makeEdit(dlg, 101, 12, 36, 336, 22);
-                makeButton(dlg, IDOK, L"OK", 168, 72, 84, 26, BS_DEFPUSHBUTTON);
-                makeButton(dlg, IDCANCEL, L"Cancel", 262, 72, 84, 26);
+                makeLabel(dlg, L"", 16, 12, layout::kPrompt.pixelW - 32, 36, 100);
+                makeEdit(dlg, 101, 16, 56, layout::kPrompt.pixelW - 32, 24);
+                makeButton(dlg, IDOK, L"OK", 360, 96, layout::pushButtonPx(L"OK"), 28, BS_DEFPUSHBUTTON);
+                makeButton(dlg, IDCANCEL, L"Cancel", 456, 96, layout::pushButtonPx(L"Cancel"), 28);
             }
             return promptProc(dlg, msg, wp, lp);
         },
@@ -263,21 +266,24 @@ void setGoogleBusy(HWND dlg, bool busy) {
 INT_PTR CALLBACK signInProc(HWND dlg, UINT msg, WPARAM wp, LPARAM lp) {
     switch (msg) {
     case WM_INITDIALOG: {
+        // dialog-frame:kSignIn
         SetWindowLongPtrW(dlg, GWLP_USERDATA, lp);
-        makeLabel(dlg, L"Sign in with Google. This only identifies your account -", 12, 10, 390, 16);
-        makeLabel(dlg, L"encryption keys stay on this device.", 12, 26, 390, 16);
-        makeButton(dlg, ID_SIGNIN_GOOGLE, L"Sign in with Google", 12, 48, 390, 28, BS_DEFPUSHBUTTON);
-        CreateWindowExW(0, L"STATIC", L"", WS_CHILD | WS_VISIBLE, 12, 82, 390, 32, dlg,
+        const int inner = layout::kSignIn.pixelW - 32;
+        makeLabel(dlg, layout::kSignInLead, 16, 12, inner, 20);
+        makeLabel(dlg, L"encryption keys stay on this device.", 16, 34, inner, 20);
+        makeButton(dlg, ID_SIGNIN_GOOGLE, L"Sign in with Google", 16, 60, inner, 28, BS_DEFPUSHBUTTON);
+        CreateWindowExW(0, L"STATIC", L"", WS_CHILD | WS_VISIBLE, 16, 96, inner, 40, dlg,
                         (HMENU)(intptr_t)ID_SIGNIN_STATUS, nullptr, nullptr);
-        makeLabel(dlg, L"Email and password (existing accounts)", 12, 118, 390, 16);
-        makeLabel(dlg, L"Email:", 12, 144, 70, 20);
-        makeEdit(dlg, ID_SIGNIN_EMAIL, 88, 142, 314, 22);
-        makeLabel(dlg, L"Password:", 12, 172, 70, 20);
-        makeEdit(dlg, ID_SIGNIN_PASSWORD, 88, 170, 314, 22, ES_PASSWORD);
-        makeButton(dlg, ID_SIGNIN_CREATE, L"Create a new account (instead of signing in)", 88, 198, 314, 20,
-                   BS_AUTOCHECKBOX);
-        makeButton(dlg, ID_SIGNIN_OK, L"Sign in with email", 88, 226, 150, 26);
-        makeButton(dlg, ID_SIGNIN_CANCEL, L"Cancel", 248, 226, 154, 26);
+        makeLabel(dlg, L"Email and password (existing accounts)", 16, 144, inner, 20);
+        makeLabel(dlg, L"Email:", 16, 172, 100, 20);
+        makeEdit(dlg, ID_SIGNIN_EMAIL, 124, 170, layout::kSignIn.pixelW - 140, 22);
+        makeLabel(dlg, L"Password:", 16, 200, 100, 20);
+        makeEdit(dlg, ID_SIGNIN_PASSWORD, 124, 198, layout::kSignIn.pixelW - 140, 22, ES_PASSWORD);
+        makeCheck(dlg, ID_SIGNIN_CREATE, layout::kCreateAccount, 124, 228,
+                  layout::checkBoxPx(layout::kCreateAccount), false);
+        makeButton(dlg, ID_SIGNIN_OK, L"Sign in with email", 124, 260,
+                   layout::pushButtonPx(L"Sign in with email"), 28);
+        makeButton(dlg, ID_SIGNIN_CANCEL, L"Cancel", 330, 260, layout::pushButtonPx(L"Cancel"), 28);
         setDefaultFont(dlg);
         return TRUE;
     }
@@ -303,7 +309,7 @@ INT_PTR CALLBACK signInProc(HWND dlg, UINT msg, WPARAM wp, LPARAM lp) {
                 setText(dlg, ID_SIGNIN_STATUS, widen(err));
             else
                 setText(dlg, ID_SIGNIN_STATUS,
-                        L"Waiting for Google\u2026 finish in the browser, then return here.");
+                        L"Waiting for Google... finish in the browser, then return here.");
             return TRUE;
         }
         KillTimer(dlg, kGooglePollTimer);
@@ -338,8 +344,7 @@ INT_PTR CALLBACK signInProc(HWND dlg, UINT msg, WPARAM wp, LPARAM lp) {
             c.googlePending = true;
             c.googleStartedAt = GetTickCount64();
             setGoogleBusy(dlg, true);
-            setText(dlg, ID_SIGNIN_STATUS,
-                    L"Waiting for Google\u2026 finish in the browser, then return here.");
+            setText(dlg, ID_SIGNIN_STATUS, L"Waiting for Google... finish in the browser, then return here.");
             SetTimer(dlg, kGooglePollTimer, 1000, nullptr);
             return TRUE;
         }
@@ -385,7 +390,8 @@ INT_PTR CALLBACK signInProc(HWND dlg, UINT msg, WPARAM wp, LPARAM lp) {
 bool Dialogs::showSignIn(HWND parent, SyncEngine& engine) {
     SignInCtx base;
     base.engine = &engine;
-    INT_PTR r = runModal(parent, L"Notepad++ Sync — Sign In", 420, 280, signInProc, base);
+    INT_PTR r = runModal(parent, layout::kTitleSignIn, layout::kSignIn.pixelW, layout::kSignIn.pixelH,
+                         signInProc, base);
     return r == IDOK && base.done;
 }
 
@@ -417,7 +423,7 @@ void fillStatus(HWND dlg, SyncEngine& e) {
         for (auto& d : devs) {
             if (d.revoked)
                 continue;
-            lines += d.current ? L"• " : L"  ";
+            lines += d.current ? L"- " : L"  ";
             lines += widen(d.name);
             lines += d.current ? L"  (this device)" : L"";
             lines += L"\r\n";
@@ -431,13 +437,15 @@ void fillStatus(HWND dlg, SyncEngine& e) {
 INT_PTR CALLBACK statusProc(HWND dlg, UINT msg, WPARAM wp, LPARAM lp) {
     switch (msg) {
     case WM_INITDIALOG: {
+        // dialog-frame:kStatus
         SetWindowLongPtrW(dlg, GWLP_USERDATA, lp);
-        makeLabel(dlg, L"Notepad++ Sync", 12, 10, 200, 20);
-        makeEdit(dlg, ID_ST_TEXT, 12, 34, 330, 120, ES_MULTILINE | ES_READONLY | WS_VSCROLL, 0);
-        makeLabel(dlg, L"Devices:", 12, 162, 200, 18);
-        makeEdit(dlg, ID_ST_DEVICES, 12, 182, 330, 90, ES_MULTILINE | ES_READONLY, 0);
-        makeButton(dlg, ID_ST_REFRESH, L"Refresh", 128, 284, 100, 26);
-        makeButton(dlg, IDOK, L"Close", 238, 284, 100, 26, BS_DEFPUSHBUTTON);
+        const int inner = layout::kStatus.pixelW - 32;
+        makeLabel(dlg, L"Notepad++ Sync", 16, 12, 200, 20);
+        makeEdit(dlg, ID_ST_TEXT, 16, 36, inner, 140, ES_MULTILINE | ES_READONLY | WS_VSCROLL, 0);
+        makeLabel(dlg, L"Devices:", 16, 184, 200, 20);
+        makeEdit(dlg, ID_ST_DEVICES, 16, 208, inner, 100, ES_MULTILINE | ES_READONLY, 0);
+        makeButton(dlg, ID_ST_REFRESH, L"Refresh", 233, 316, layout::pushButtonPx(L"Refresh"), 28);
+        makeButton(dlg, IDOK, L"Close", 336, 316, layout::pushButtonPx(L"Close"), 28, BS_DEFPUSHBUTTON);
         setDefaultFont(dlg);
         fillStatus(dlg, *ctx(dlg).engine);
         return TRUE;
@@ -462,7 +470,7 @@ INT_PTR CALLBACK statusProc(HWND dlg, UINT msg, WPARAM wp, LPARAM lp) {
 
 void Dialogs::showStatus(HWND parent, SyncEngine& engine) {
     DialogBase base{&engine, false, ""};
-    runModal(parent, L"Notepad++ Sync — Status", 360, 325, statusProc, base);
+    runModal(parent, layout::kTitleStatus, layout::kStatus.pixelW, layout::kStatus.pixelH, statusProc, base);
 }
 
 // ============================ Second computer ============================
@@ -489,16 +497,17 @@ struct PairWaitCtx : DialogBase
 INT_PTR CALLBACK pairWaitProc(HWND dlg, UINT msg, WPARAM wp, LPARAM lp) {
     switch (msg) {
     case WM_INITDIALOG: {
+        // dialog-frame:kPair
         SetWindowLongPtrW(dlg, GWLP_USERDATA, lp);
         auto& c = static_cast<PairWaitCtx&>(ctx(dlg));
-        makeLabel(dlg, L"On the computer that already has your notes, open Notepad++.", 12, 12, 420, 18);
-        makeLabel(dlg, L"Choose Plugins \u2192 Notepad++ Sync \u2192 Allow another computer.", 12, 32, 420,
-                  18);
-        makeLabel(dlg, L"Type this code there. Leave this window open.", 12, 52, 420, 18);
-        makeLabel(dlg, L"", 12, 80, 420, 28, ID_PAIR_CODE);
+        const int inner = layout::kPair.pixelW - 32;
+        makeLabel(dlg, layout::kPairLead, 16, 16, inner, 20);
+        makeLabel(dlg, layout::kPairMenu, 16, 40, inner, 20);
+        makeLabel(dlg, L"Type this code there. Leave this window open.", 16, 64, inner, 20);
+        makeLabel(dlg, L"", 16, 96, inner, 32, ID_PAIR_CODE);
         setText(dlg, ID_PAIR_CODE, widen(c.code));
-        makeLabel(dlg, L"Waiting for the other computer\u2026", 12, 116, 420, 36, ID_PAIR_STATUS);
-        makeButton(dlg, IDCANCEL, L"Cancel", 332, 160, 100, 26);
+        makeLabel(dlg, L"Waiting for the other computer...", 16, 136, inner, 40, ID_PAIR_STATUS);
+        makeButton(dlg, IDCANCEL, L"Cancel", 496, 188, layout::pushButtonPx(L"Cancel"), 28);
         setDefaultFont(dlg);
         c.startedAt = GetTickCount64();
         SetTimer(dlg, kPairPollTimer, 1500, nullptr);
@@ -524,7 +533,7 @@ INT_PTR CALLBACK pairWaitProc(HWND dlg, UINT msg, WPARAM wp, LPARAM lp) {
             if (!err.empty())
                 setText(dlg, ID_PAIR_STATUS, widen(err));
             else
-                setText(dlg, ID_PAIR_STATUS, L"Waiting for the other computer\u2026");
+                setText(dlg, ID_PAIR_STATUS, L"Waiting for the other computer...");
             return TRUE;
         }
         KillTimer(dlg, kPairPollTimer);
@@ -559,14 +568,15 @@ bool waitForOtherComputer(HWND parent, SyncEngine& engine, const std::string& co
     PairWaitCtx c;
     c.engine = &engine;
     c.code = code;
-    INT_PTR r = runModal(parent, L"Notepad++ Sync — Other computer", 450, 210, pairWaitProc, c);
+    INT_PTR r =
+        runModal(parent, layout::kTitlePair, layout::kPair.pixelW, layout::kPair.pixelH, pairWaitProc, c);
     return r == IDOK && c.installed && engine.hasMasterKey();
 }
 } // namespace
 
 void Dialogs::allowAnotherComputer(HWND parent, SyncEngine& engine) {
     if (!engine.isSignedIn()) {
-        MessageBoxW(parent, L"Sign in with Google first.\n\nPlugins \u2192 Notepad++ Sync \u2192 Sign In.",
+        MessageBoxW(parent, L"Sign in with Google first.\n\nPlugins -> Notepad++ Sync -> Sign In.",
                     L"Notepad++ Sync", MB_OK | MB_ICONINFORMATION);
         return;
     }
@@ -597,7 +607,7 @@ void Dialogs::allowAnotherComputer(HWND parent, SyncEngine& engine) {
 
 bool Dialogs::getMyNotes(HWND parent, SyncEngine& engine) {
     if (!engine.isSignedIn()) {
-        MessageBoxW(parent, L"Sign in with Google first.\n\nPlugins \u2192 Notepad++ Sync \u2192 Sign In.",
+        MessageBoxW(parent, L"Sign in with Google first.\n\nPlugins -> Notepad++ Sync -> Sign In.",
                     L"Notepad++ Sync", MB_OK | MB_ICONINFORMATION);
         return false;
     }
@@ -693,14 +703,16 @@ void fillDevices(HWND dlg, DevicesCtx& c) {
 INT_PTR CALLBACK devicesProc(HWND dlg, UINT msg, WPARAM wp, LPARAM lp) {
     switch (msg) {
     case WM_INITDIALOG: {
+        // dialog-frame:kDevices
         SetWindowLongPtrW(dlg, GWLP_USERDATA, lp);
         DevicesCtx& c = static_cast<DevicesCtx&>(ctx(dlg));
+        const int inner = layout::kDevices.pixelW - 32;
         HWND lv = CreateWindowExW(WS_EX_CLIENTEDGE, WC_LISTVIEWW, L"",
-                                  WS_CHILD | WS_VISIBLE | LVS_REPORT | LVS_SINGLESEL | WS_TABSTOP, 12, 12,
-                                  480, 200, dlg, (HMENU)(intptr_t)ID_DEV_LIST, nullptr, nullptr);
+                                  WS_CHILD | WS_VISIBLE | LVS_REPORT | LVS_SINGLESEL | WS_TABSTOP, 16, 12,
+                                  inner, 188, dlg, (HMENU)(intptr_t)ID_DEV_LIST, nullptr, nullptr);
         ListView_SetExtendedListViewStyle(lv, LVS_EX_FULLROWSELECT);
         const wchar_t* cols[] = {L"Name", L"Device ID", L"Last seen", L"Status"};
-        int widths[] = {150, 150, 100, 80};
+        int widths[] = {160, 180, 120, 90};
         for (int i = 0; i < 4; ++i) {
             LVCOLUMNW col{};
             col.mask = LVCF_TEXT | LVCF_WIDTH;
@@ -708,13 +720,15 @@ INT_PTR CALLBACK devicesProc(HWND dlg, UINT msg, WPARAM wp, LPARAM lp) {
             col.cx = widths[i];
             ListView_InsertColumn(lv, i, &col);
         }
-        makeButton(dlg, ID_DEV_REFRESH, L"Refresh", 12, 222, 90, 26);
-        makeButton(dlg, ID_DEV_RENAME, L"Rename", 110, 222, 90, 26);
-        makeButton(dlg, ID_DEV_REVOKE, L"Revoke", 208, 222, 90, 26);
-        makeButton(dlg, ID_DEV_PAIR, L"Get my notes", 306, 222, 120, 26);
-        makeButton(dlg, ID_DEV_APPROVE, L"Allow another computer", 12, 256, 190, 26);
-        makeButton(dlg, IDOK, L"Close", 402, 256, 90, 26, BS_DEFPUSHBUTTON);
-        makeLabel(dlg, L"", 12, 292, 480, 18, ID_DEV_MSG);
+        makeButton(dlg, ID_DEV_REFRESH, L"Refresh", 16, 208, layout::pushButtonPx(L"Refresh"), 28);
+        makeButton(dlg, ID_DEV_RENAME, L"Rename", 119, 208, layout::pushButtonPx(L"Rename"), 28);
+        makeButton(dlg, ID_DEV_REVOKE, L"Revoke", 215, 208, layout::pushButtonPx(L"Revoke"), 28);
+        makeButton(dlg, ID_DEV_PAIR, L"Get my notes", 311, 208, layout::pushButtonPx(L"Get my notes"), 28);
+        makeButton(dlg, ID_DEV_APPROVE, L"Allow another computer", 16, 244,
+                   layout::pushButtonPx(L"Allow another computer"), 28);
+        makeButton(dlg, IDOK, L"Close", 496, 244, layout::pushButtonPx(L"Close"), 28, BS_DEFPUSHBUTTON);
+        makeLabel(dlg, L"New computer: Get my notes. This one, if it has the notes: Allow another computer.",
+                  16, 284, inner, 40, ID_DEV_MSG);
         setDefaultFont(dlg);
         fillDevices(dlg, c);
         return TRUE;
@@ -782,7 +796,7 @@ void Dialogs::showDevices(HWND parent, SyncEngine& engine) {
     DevicesCtx c;
     c.engine = &engine;
     DialogMemory mem;
-    mem.begin(L"Notepad++ Sync — Manage Devices", 510, 325);
+    mem.begin(layout::kTitleDevices, layout::kDevices.pixelW, layout::kDevices.pixelH);
     DialogBoxIndirectParamW(pluginInstance(), mem.get(), parent, devicesProc, reinterpret_cast<LPARAM>(&c));
 }
 // ============================ Synced Files/Folders ============================
@@ -835,34 +849,40 @@ void fillSyncedFiles(HWND dlg, SyncedFilesCtx& c) {
 INT_PTR CALLBACK syncedFilesProc(HWND dlg, UINT msg, WPARAM wp, LPARAM lp) {
     switch (msg) {
     case WM_INITDIALOG: {
+        // dialog-frame:kSyncedFiles
         SetWindowLongPtrW(dlg, GWLP_USERDATA, lp);
         SyncedFilesCtx& c = static_cast<SyncedFilesCtx&>(ctx(dlg));
+        const int inner = layout::kSyncedFiles.pixelW - 32;
         HWND lv = CreateWindowExW(WS_EX_CLIENTEDGE, WC_LISTVIEWW, L"",
-                                  WS_CHILD | WS_VISIBLE | LVS_REPORT | LVS_SINGLESEL | WS_TABSTOP, 12, 12,
-                                  500, 170, dlg, (HMENU)(intptr_t)ID_SF_LIST, nullptr, nullptr);
+                                  WS_CHILD | WS_VISIBLE | LVS_REPORT | LVS_SINGLESEL | WS_TABSTOP, 16, 12,
+                                  inner, 168, dlg, (HMENU)(intptr_t)ID_SF_LIST, nullptr, nullptr);
         ListView_SetExtendedListViewStyle(lv, LVS_EX_FULLROWSELECT);
         LVCOLUMNW col{};
         col.mask = LVCF_TEXT | LVCF_WIDTH;
         col.pszText = const_cast<wchar_t*>(L"Type");
-        col.cx = 70;
+        col.cx = 80;
         ListView_InsertColumn(lv, 0, &col);
         col.pszText = const_cast<wchar_t*>(L"Path");
-        col.cx = 420;
+        col.cx = 500;
         ListView_InsertColumn(lv, 1, &col);
 
-        makeButton(dlg, ID_SF_ADDFOLDER, L"Add Folder…", 12, 190, 110, 26);
-        makeButton(dlg, ID_SF_ADDFILE, L"Add File…", 130, 190, 110, 26);
-        makeButton(dlg, ID_SF_REMOVE, L"Remove Selected", 248, 190, 130, 26);
+        makeButton(dlg, ID_SF_ADDFOLDER, layout::kAddFolder, 16, 188,
+                   layout::pushButtonPx(layout::kAddFolder), 28);
+        makeButton(dlg, ID_SF_ADDFILE, layout::kAddFile, 173, 188, layout::pushButtonPx(layout::kAddFile),
+                   28);
+        makeButton(dlg, ID_SF_REMOVE, layout::kRemoveSelected, 312, 188,
+                   layout::pushButtonPx(layout::kRemoveSelected), 28);
 
         makeLabel(dlg,
                   L"Ignore patterns (one per line, .gitignore-style; a .npsyncignore file in a synced folder "
                   L"also applies):",
-                  12, 226, 500, 30);
-        makeEdit(dlg, ID_SF_IGNORE, 12, 258, 500, 90, ES_MULTILINE | WS_VSCROLL | ES_WANTRETURN,
+                  16, 224, inner, 40);
+        makeEdit(dlg, ID_SF_IGNORE, 16, 272, inner, 100, ES_MULTILINE | WS_VSCROLL | ES_WANTRETURN,
                  WS_EX_CLIENTEDGE);
-        makeButton(dlg, ID_SF_SAVEIGNORE, L"Save Patterns", 12, 356, 110, 26);
-        makeButton(dlg, IDOK, L"Close", 422, 356, 90, 26, BS_DEFPUSHBUTTON);
-        makeLabel(dlg, L"", 130, 360, 280, 18, ID_SF_MSG);
+        makeButton(dlg, ID_SF_SAVEIGNORE, layout::kSavePatterns, 16, 384,
+                   layout::pushButtonPx(layout::kSavePatterns), 28);
+        makeButton(dlg, IDOK, L"Close", 536, 384, layout::pushButtonPx(L"Close"), 28, BS_DEFPUSHBUTTON);
+        makeLabel(dlg, L"", 176, 388, 340, 20, ID_SF_MSG);
         setDefaultFont(dlg);
 
         std::wstring patterns;
@@ -966,7 +986,7 @@ void Dialogs::showSyncedFiles(HWND parent, SyncEngine& engine) {
     SyncedFilesCtx c;
     c.engine = &engine;
     DialogMemory mem;
-    mem.begin(L"Notepad++ Sync — Synced Files/Folders", 530, 400);
+    mem.begin(layout::kTitleSyncedFiles, layout::kSyncedFiles.pixelW, layout::kSyncedFiles.pixelH);
     DialogBoxIndirectParamW(pluginInstance(), mem.get(), parent, syncedFilesProc,
                             reinterpret_cast<LPARAM>(&c));
 }
@@ -1016,14 +1036,16 @@ void fillConflicts(HWND dlg, ConflictsCtx& c) {
 INT_PTR CALLBACK conflictsProc(HWND dlg, UINT msg, WPARAM wp, LPARAM lp) {
     switch (msg) {
     case WM_INITDIALOG: {
+        // dialog-frame:kConflicts
         SetWindowLongPtrW(dlg, GWLP_USERDATA, lp);
         ConflictsCtx& c = static_cast<ConflictsCtx&>(ctx(dlg));
+        const int inner = layout::kConflicts.pixelW - 32;
         HWND lv = CreateWindowExW(WS_EX_CLIENTEDGE, WC_LISTVIEWW, L"",
-                                  WS_CHILD | WS_VISIBLE | LVS_REPORT | LVS_SINGLESEL | WS_TABSTOP, 12, 12,
-                                  520, 180, dlg, (HMENU)(intptr_t)ID_CF_LIST, nullptr, nullptr);
+                                  WS_CHILD | WS_VISIBLE | LVS_REPORT | LVS_SINGLESEL | WS_TABSTOP, 16, 12,
+                                  inner, 160, dlg, (HMENU)(intptr_t)ID_CF_LIST, nullptr, nullptr);
         ListView_SetExtendedListViewStyle(lv, LVS_EX_FULLROWSELECT);
         const wchar_t* cols[] = {L"File", L"Version", L"Detected"};
-        int widths[] = {330, 90, 90};
+        int widths[] = {400, 110, 100};
         for (int i = 0; i < 3; ++i) {
             LVCOLUMNW col{};
             col.mask = LVCF_TEXT | LVCF_WIDTH;
@@ -1031,14 +1053,15 @@ INT_PTR CALLBACK conflictsProc(HWND dlg, UINT msg, WPARAM wp, LPARAM lp) {
             col.cx = widths[i];
             ListView_InsertColumn(lv, i, &col);
         }
-        makeLabel(dlg, L"Both versions are always preserved. Choose a resolution:", 12, 200, 520, 18);
-        makeButton(dlg, ID_CF_LOCAL, L"Keep Local", 12, 224, 100, 26);
-        makeButton(dlg, ID_CF_REMOTE, L"Keep Remote", 120, 224, 100, 26);
-        makeButton(dlg, ID_CF_BOTH, L"Keep Both", 228, 224, 100, 26);
-        makeButton(dlg, ID_CF_COMPARE, L"Open Comparison", 336, 224, 130, 26);
-        makeButton(dlg, ID_CF_REFRESH, L"Refresh", 12, 258, 90, 26);
-        makeButton(dlg, IDOK, L"Close", 442, 258, 90, 26, BS_DEFPUSHBUTTON);
-        makeLabel(dlg, L"", 110, 262, 320, 18, ID_CF_MSG);
+        makeLabel(dlg, L"Both versions are always preserved. Choose a resolution:", 16, 180, inner, 20);
+        makeButton(dlg, ID_CF_LOCAL, L"Keep Local", 16, 208, layout::pushButtonPx(L"Keep Local"), 28);
+        makeButton(dlg, ID_CF_REMOTE, L"Keep Remote", 146, 208, layout::pushButtonPx(L"Keep Remote"), 28);
+        makeButton(dlg, ID_CF_BOTH, L"Keep Both", 285, 208, layout::pushButtonPx(L"Keep Both"), 28);
+        makeButton(dlg, ID_CF_COMPARE, L"Open Comparison", 406, 208, layout::pushButtonPx(L"Open Comparison"),
+                   28);
+        makeButton(dlg, ID_CF_REFRESH, L"Refresh", 16, 252, layout::pushButtonPx(L"Refresh"), 28);
+        makeButton(dlg, IDOK, L"Close", 556, 252, layout::pushButtonPx(L"Close"), 28, BS_DEFPUSHBUTTON);
+        makeLabel(dlg, L"", 120, 256, 420, 20, ID_CF_MSG);
         setDefaultFont(dlg);
         fillConflicts(dlg, c);
         return TRUE;
@@ -1099,7 +1122,7 @@ void Dialogs::showConflicts(HWND parent, SyncEngine& engine) {
     ConflictsCtx c;
     c.engine = &engine;
     DialogMemory mem;
-    mem.begin(L"Notepad++ Sync — Conflicts", 550, 300);
+    mem.begin(layout::kTitleConflicts, layout::kConflicts.pixelW, layout::kConflicts.pixelH);
     DialogBoxIndirectParamW(pluginInstance(), mem.get(), parent, conflictsProc, reinterpret_cast<LPARAM>(&c));
 }
 // ============================ Settings (tabbed) ============================
@@ -1152,11 +1175,14 @@ void settingsShowTab(HWND dlg, SettingsCtx& c, int tab) {
 INT_PTR CALLBACK settingsProc(HWND dlg, UINT msg, WPARAM wp, LPARAM lp) {
     switch (msg) {
     case WM_INITDIALOG: {
+        // dialog-frame:kSettings
         SetWindowLongPtrW(dlg, GWLP_USERDATA, lp);
         SettingsCtx& c = static_cast<SettingsCtx&>(ctx(dlg));
         Settings* s = c.engine ? c.engine->settings() : nullptr;
-        HWND tab = CreateWindowExW(0, WC_TABCONTROLW, L"", WS_CHILD | WS_VISIBLE | WS_TABSTOP, 8, 8, 480, 26,
-                                   dlg, (HMENU)(intptr_t)ID_SET_TAB, nullptr, nullptr);
+        const int inner = layout::kSettings.pixelW - 32;
+        HWND tab = CreateWindowExW(0, WC_TABCONTROLW, L"", WS_CHILD | WS_VISIBLE | WS_TABSTOP, 8, 8,
+                                   layout::kSettings.pixelW - 16, 28, dlg, (HMENU)(intptr_t)ID_SET_TAB,
+                                   nullptr, nullptr);
         const wchar_t* tabs[] = {L"General", L"Files", L"Session", L"Security", L"Advanced"};
         for (int i = 0; i < 5; ++i) {
             TCITEMW ti{};
@@ -1164,25 +1190,30 @@ INT_PTR CALLBACK settingsProc(HWND dlg, UINT msg, WPARAM wp, LPARAM lp) {
             ti.pszText = const_cast<wchar_t*>(tabs[i]);
             TabCtrl_InsertItem(tab, i, &ti);
         }
-        const int tx = 16, ty = 44; // tab content origin
+        const int tx = 16, ty = 48; // tab content origin
 
         // General
-        makeCheck(dlg, ID_G_AUTOSTART, L"Start sync automatically", tx, ty, 220, s->startSyncAutomatically);
-        makeCheck(dlg, ID_G_PAUSE, L"Pause sync", tx, ty + 26, 220, s->pauseSync);
-        makeCheck(dlg, ID_G_WS, L"Realtime connection (WebSocket)", tx, ty + 52, 260, s->webSocketEnabled);
-        makeCheck(dlg, ID_G_NOTIFY, L"Notifications", tx, ty + 78, 220, s->notificationsEnabled);
-        makeLabel(dlg, L"Sync interval fallback (sec):", tx, ty + 108, 200, 18, 219);
-        makeEdit(dlg, ID_G_INTERVAL, tx + 210, ty + 106, 60, 22);
+        makeCheck(dlg, ID_G_AUTOSTART, L"Start sync automatically", tx, ty,
+                  layout::checkBoxPx(L"Start sync automatically"), s->startSyncAutomatically);
+        makeCheck(dlg, ID_G_PAUSE, L"Pause sync", tx, ty + 28, layout::checkBoxPx(L"Pause sync"),
+                  s->pauseSync);
+        makeCheck(dlg, ID_G_WS, L"Realtime connection (WebSocket)", tx, ty + 56,
+                  layout::checkBoxPx(L"Realtime connection (WebSocket)"), s->webSocketEnabled);
+        makeCheck(dlg, ID_G_NOTIFY, L"Notifications", tx, ty + 84, layout::checkBoxPx(L"Notifications"),
+                  s->notificationsEnabled);
+        makeLabel(dlg, L"Sync interval fallback (sec):", tx, ty + 120,
+                  layout::labelPx(L"Sync interval fallback (sec):"), 20, 219);
+        makeEdit(dlg, ID_G_INTERVAL, 308, ty + 118, 70, 22);
         setText(dlg, ID_G_INTERVAL, std::to_string(s->syncIntervalFallbackSec));
 
         // Files
-        makeLabel(dlg, L"Max file size (MB):", tx, ty, 200, 18, 238);
-        makeEdit(dlg, ID_F_MAXSIZE, tx + 210, ty - 2, 60, 22);
+        makeLabel(dlg, L"Max file size (MB):", tx, ty, layout::labelPx(L"Max file size (MB):"), 20, 238);
+        makeEdit(dlg, ID_F_MAXSIZE, 220, ty - 2, 70, 22);
         setText(dlg, ID_F_MAXSIZE, std::to_string(s->maxFileBytes / 1024 / 1024));
         makeLabel(dlg, L"Manage synced folders/files with 'Synced Files/Folders' in the plugin menu.", tx,
-                  ty + 32, 460, 18, 239);
-        makeLabel(dlg, L"Ignore patterns:", tx, ty + 58, 200, 18, 237);
-        makeEdit(dlg, ID_F_IGNORE, tx, ty + 78, 456, 110, ES_MULTILINE | WS_VSCROLL | ES_WANTRETURN,
+                  ty + 32, inner, 40, 239);
+        makeLabel(dlg, L"Ignore patterns:", tx, ty + 80, layout::labelPx(L"Ignore patterns:"), 20, 237);
+        makeEdit(dlg, ID_F_IGNORE, tx, ty + 104, inner, 100, ES_MULTILINE | WS_VSCROLL | ES_WANTRETURN,
                  WS_EX_CLIENTEDGE);
         {
             std::wstring pats;
@@ -1194,34 +1225,41 @@ INT_PTR CALLBACK settingsProc(HWND dlg, UINT msg, WPARAM wp, LPARAM lp) {
         }
 
         // Session
-        makeButton(dlg, ID_S_FILESONLY, L"Sync files only", tx, ty, 220, 20, BS_AUTORADIOBUTTON | WS_GROUP);
-        makeButton(dlg, ID_S_TABS, L"Sync files + open tabs", tx, ty + 26, 220, 20, BS_AUTORADIOBUTTON);
-        makeButton(dlg, ID_S_CURSOR, L"Sync files + tabs + cursor positions", tx, ty + 52, 280, 20,
+        makeButton(dlg, ID_S_FILESONLY, L"Sync files only", tx, ty, 420, 22, BS_AUTORADIOBUTTON | WS_GROUP);
+        makeButton(dlg, ID_S_TABS, L"Sync files + open tabs", tx, ty + 30, 420, 22, BS_AUTORADIOBUTTON);
+        makeButton(dlg, ID_S_CURSOR, L"Sync files + tabs + cursor positions", tx, ty + 60, 420, 22,
                    BS_AUTORADIOBUTTON);
         CheckRadioButton(dlg, ID_S_FILESONLY, ID_S_CURSOR, ID_S_FILESONLY + (int)s->sessionMode);
         makeCheck(dlg, ID_S_UNSAVED, L"Sync unsaved notes (WARNING: uploads never-saved scratch content)", tx,
-                  ty + 86, 460, s->syncUnsavedNotes);
+                  ty + 96,
+                  layout::checkBoxPx(L"Sync unsaved notes (WARNING: uploads never-saved scratch content)"),
+                  s->syncUnsavedNotes);
 
         // Security
-        makeLabel(dlg, L"This device name:", tx, ty, 200, 18, 279);
-        makeEdit(dlg, ID_SEC_DEVNAME, tx + 210, ty - 2, 200, 22);
+        makeLabel(dlg, L"This device name:", tx, ty, layout::labelPx(L"This device name:"), 20, 279);
+        makeEdit(dlg, ID_SEC_DEVNAME, 210, ty - 2, 250, 22);
         setText(dlg, ID_SEC_DEVNAME, s->deviceName);
-        makeButton(dlg, ID_SEC_RECOVERY, L"Show recovery key", tx, ty + 34, 160, 26);
-        makeButton(dlg, ID_SEC_DEVICES, L"Manage devices…", tx, ty + 68, 160, 26);
+        makeButton(dlg, ID_SEC_RECOVERY, L"Show recovery key", tx, ty + 36,
+                   layout::pushButtonPx(L"Show recovery key"), 28);
+        makeButton(dlg, ID_SEC_DEVICES, L"Manage devices...", tx, ty + 76,
+                   layout::pushButtonPx(L"Manage devices..."), 28);
 
         // Advanced
-        makeLabel(dlg, L"Backend URL:", tx, ty, 200, 18, 298);
-        makeEdit(dlg, ID_A_URL, tx, ty + 20, 456, 22);
+        makeLabel(dlg, L"Backend URL:", tx, ty, layout::labelPx(L"Backend URL:"), 20, 298);
+        makeEdit(dlg, ID_A_URL, tx, ty + 24, inner, 22);
         setText(dlg, ID_A_URL, s->backendUrl);
-        makeCheck(dlg, ID_A_DEBUG, L"Debug logging", tx, ty + 54, 220, s->debugLogging);
-        makeLabel(dlg, L"Database location (blank = default):", tx, ty + 84, 300, 18, 297);
-        makeEdit(dlg, ID_A_DBLOC, tx, ty + 104, 456, 22);
+        makeCheck(dlg, ID_A_DEBUG, L"Debug logging", tx, ty + 60, layout::checkBoxPx(L"Debug logging"),
+                  s->debugLogging);
+        makeLabel(dlg, L"Database location (blank = default):", tx, ty + 92,
+                  layout::labelPx(L"Database location (blank = default):"), 20, 297);
+        makeEdit(dlg, ID_A_DBLOC, tx, ty + 116, inner, 22);
         setText(dlg, ID_A_DBLOC, s->databaseLocation);
-        makeButton(dlg, ID_A_RESET, L"Reset local sync state…", tx, ty + 140, 180, 26);
+        makeButton(dlg, ID_A_RESET, L"Reset local sync state...", tx, ty + 152,
+                   layout::pushButtonPx(L"Reset local sync state..."), 28);
 
-        makeButton(dlg, ID_SET_OK, L"Save", 300, 250, 90, 26, BS_DEFPUSHBUTTON);
-        makeButton(dlg, ID_SET_CANCEL, L"Cancel", 398, 250, 90, 26);
-        makeLabel(dlg, L"", 12, 254, 280, 18, ID_SET_MSG);
+        makeButton(dlg, ID_SET_OK, L"Save", 480, 296, layout::pushButtonPx(L"Save"), 28, BS_DEFPUSHBUTTON);
+        makeButton(dlg, ID_SET_CANCEL, L"Cancel", 576, 296, layout::pushButtonPx(L"Cancel"), 28);
+        makeLabel(dlg, L"", 16, 300, 450, 20, ID_SET_MSG);
 
         c.tabControls = {
             {ID_G_AUTOSTART, ID_G_PAUSE, ID_G_WS, ID_G_NOTIFY, ID_G_INTERVAL, 219},
@@ -1259,7 +1297,7 @@ INT_PTR CALLBACK settingsProc(HWND dlg, UINT msg, WPARAM wp, LPARAM lp) {
                           L"\n\nThis key only unwraps the copy stored for this Windows user. "
                           L"Typing it on another computer does not open your notes. "
                           L"The other computer gets the key when you choose Allow another computer here.";
-            MessageBoxW(dlg, m.c_str(), L"Notepad++ Sync — Recovery Key",
+            MessageBoxW(dlg, m.c_str(), layout::kTitleRecovery,
                         MB_OK | (rk.empty() ? MB_ICONINFORMATION : MB_ICONWARNING));
             return TRUE;
         }
@@ -1354,7 +1392,7 @@ void Dialogs::showSettings(HWND parent, SyncEngine& engine) {
     SettingsCtx c;
     c.engine = &engine;
     DialogMemory mem;
-    mem.begin(L"Notepad++ Sync — Settings", 500, 295);
+    mem.begin(layout::kTitleSettings, layout::kSettings.pixelW, layout::kSettings.pixelH);
     DialogBoxIndirectParamW(pluginInstance(), mem.get(), parent, settingsProc, reinterpret_cast<LPARAM>(&c));
 }
 
@@ -1365,11 +1403,11 @@ void Dialogs::showFirstRunWizard(HWND parent, SyncEngine& engine) {
                         L"Welcome to Notepad++ Sync.\n\n"
                         L"Sign in with Google. If this is your first computer, an encryption key "
                         L"is created here and never uploaded. If your notes are already on another "
-                        L"computer, that computer allows this one — this setup will not create a "
+                        L"computer, that computer allows this one - this setup will not create a "
                         L"second key.\n\n"
                         L"You do not type a server address.\n\n"
                         L"Continue?",
-                        L"Notepad++ Sync — Setup", MB_YESNO | MB_ICONQUESTION);
+                        layout::kTitleSetup, MB_YESNO | MB_ICONQUESTION);
     if (r != IDYES)
         return;
 
@@ -1380,13 +1418,13 @@ void Dialogs::showFirstRunWizard(HWND parent, SyncEngine& engine) {
     if (!engine.hasMasterKey()) {
         int which = MessageBoxW(parent,
                                 L"Are your notes already on another computer?\n\n"
-                                L"Yes — I will open Notepad++ there and choose Allow another computer.\n"
-                                L"No — this is the first computer. Create the encryption key here.",
-                                L"Notepad++ Sync — Setup", MB_YESNOCANCEL | MB_ICONQUESTION);
+                                L"Yes - I will open Notepad++ there and choose Allow another computer.\n"
+                                L"No - this is the first computer. Create the encryption key here.",
+                                layout::kTitleSetup, MB_YESNOCANCEL | MB_ICONQUESTION);
         if (which == IDCANCEL) {
             MessageBoxW(parent,
                         L"Setup stopped. This computer did not create an encryption key.\n\n"
-                        L"When you are ready, choose Plugins \u2192 Notepad++ Sync \u2192 Get my notes.",
+                        L"When you are ready, choose Plugins -> Notepad++ Sync -> Get my notes.",
                         L"Notepad++ Sync", MB_OK | MB_ICONINFORMATION);
             return;
         }
@@ -1415,27 +1453,11 @@ void Dialogs::showFirstRunWizard(HWND parent, SyncEngine& engine) {
                       L"computer, choose Allow another computer and type the code it shows.\n\n"
                       L"If this computer is lost before another one is allowed, the notes on the "
                       L"server cannot be read. Google sign-in does not replace this key.";
-        MessageBoxW(parent, msg.c_str(), L"Notepad++ Sync — Recovery Key", MB_OK | MB_ICONWARNING);
+        MessageBoxW(parent, msg.c_str(), layout::kTitleRecovery, MB_OK | MB_ICONWARNING);
     }
-    // Let the user name the device right away.
-    std::string name;
-    if (prompt(parent, L"Name this device", L"Device name (e.g. Laptop-Home):", engine.settings()->deviceName,
-               name)) {
-        engine.settings()->deviceName = name;
-        engine.saveSettings();
-    }
-    Dialogs::showSyncedFiles(parent, engine);
-    if (engine.hasMasterKey()) {
-        MessageBoxW(parent, L"Setup complete. Sync now runs in the background — just use Notepad++.",
-                    L"Notepad++ Sync", MB_OK | MB_ICONINFORMATION);
-    }
-    else {
-        MessageBoxW(parent,
-                    L"Setup is not finished. This computer does not have the encryption key yet, "
-                    L"so notes from your other computer cannot open here.\n\n"
-                    L"When that computer is on, choose Plugins \u2192 Notepad++ Sync \u2192 Get my notes.",
-                    L"Notepad++ Sync", MB_OK | MB_ICONWARNING);
-    }
+    // Setup ends here, after sign-in, the first-computer question, and the
+    // recovery key. The folder list stays on the plugin menu for someone
+    // who later wants to add a folder. It is not opened during setup.
 }
 
 void Dialogs::showAbout(HWND parent) {

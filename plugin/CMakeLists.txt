@@ -112,6 +112,15 @@ if(NPSYNC_BUILD_TESTS)
                      "MultiThreaded$<$<CONFIG:Debug>:Debug>")
     endif()
     add_test(NAME core_tests COMMAND npsync_core_tests)
+
+    # ASCII copy and dialog-unit fit. No Windows SDK required.
+    add_executable(npsync_dialog_layout_tests tests/dialog_layout_test.cpp)
+    target_include_directories(npsync_dialog_layout_tests PRIVATE src)
+    target_compile_features(npsync_dialog_layout_tests PRIVATE cxx_std_17)
+    target_compile_definitions(npsync_dialog_layout_tests PRIVATE
+        "NPSYNC_DIALOGS_CPP=\"${CMAKE_CURRENT_SOURCE_DIR}/src/Dialogs.cpp\""
+        "NPSYNC_PLUGIN_DEFINITION_CPP=\"${CMAKE_CURRENT_SOURCE_DIR}/src/PluginDefinition.cpp\"")
+    add_test(NAME dialog_layout_tests COMMAND npsync_dialog_layout_tests)
 endif()
 
 # ---- install / packaging layout ----
