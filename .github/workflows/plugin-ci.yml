@@ -10,11 +10,16 @@ on:
   pull_request:
     paths:
       - 'plugin/**'
+      - 'installer/**'
       - '.github/workflows/plugin-ci.yml'
+      - '.github/workflows/release.yml'
   push:
     branches: [main]
     paths:
       - 'plugin/**'
+      - 'installer/**'
+      - '.github/workflows/plugin-ci.yml'
+      - '.github/workflows/release.yml'
 
 jobs:
   build-test:
@@ -49,13 +54,26 @@ jobs:
             exit 1
           }
 
-      - name: Package artifact
+      - name: Install NSIS
         shell: pwsh
         run: |
-          New-Item -ItemType Directory -Force -Path dist | Out-Null
-          Copy-Item plugin/build/Release/NppSync.dll dist/NppSync.dll
+          $ErrorActionPreference = "Stop"
+          choco install nsis -y --no-progress
+          if ($LASTEXITCODE -ne 0 -and $LASTEXITCODE -ne 3010) { throw "choco install nsis failed with exit code $LASTEXITCODE" }
+          $makensis = @(
+            "${env:ProgramFiles(x86)}\NSIS\makensis.exe",
+            "$env:ProgramFiles\NSIS\makensis.exe"
+          ) | Where-Object { Test-Path -LiteralPath $_ } | Select-Object -First 1
+          if (-not $makensis) { throw "makensis.exe was not found after installing NSIS." }
+          Split-Path -Parent $makensis | Out-File -FilePath $env:GITHUB_PATH -Append -Encoding ascii
+
+      - name: Package ZIP and installer
+        shell: pwsh
+        run: powershell -File installer/package.ps1 -Version 0.0.0
 
       - uses: actions/upload-artifact@v4
         with:
-          name: NppSync-dll
-          path: dist/NppSync.dll
+          name: NppSync-setup
+          path: |
+            dist/NotepadPlusPlusSync-v0.0.0-win64-setup.exe
+            dist/NotepadPlusPlusSync-v0.0.0-win64.zip

@@ -29,15 +29,17 @@ Notepad++ Sync is a native Notepad++ plugin plus a small self-hostable backend. 
 
 ### For users
 
-1. Download the latest `NotepadPlusPlusSync-vX.Y.Z-win64.zip` from [Releases](../../releases).
-2. Close Notepad++.
-3. Extract the ZIP and copy `NppSync.dll` (and the bundled `deps\` folder, if present) into:
-   ```
-   C:\Program Files\Notepad++\plugins\NppSync\
-   ```
-4. Start Notepad++. **Plugins → Notepad++ Sync** is in the menu.
+1. Download `NotepadPlusPlusSync-vX.Y.Z-win64-setup.exe` from [Releases](../../releases).
+2. Double-click it.
+3. If Windows says it protected your PC, choose **More info**, then **Run anyway**. The download is not signed yet.
+4. If Windows asks "Do you want to allow this app to make changes?", choose **Yes**. That only lets the installer copy the plugin into the Notepad++ folder.
+5. Choose **Next**, then **Install**. The installer finds 64-bit Notepad++ (in `C:\Program Files\Notepad++`, or in your user folder if Notepad++ was installed only for you).
+6. If Notepad++ is open, choose **Yes** only when you are ready for it to close. Notepad++ will ask you to save unsaved notes. The installer does not force it to quit. Choose **No** to stop, close Notepad++ yourself, and run the installer again.
+7. Open Notepad++. **Plugins → Notepad++ Sync** is in the menu.
    A fresh install uses `https://sync.berkkarabacak.com`. You do not type a server address.
-5. Follow the first-run setup: **Sign in with Google** (or email and password, for an existing account). On the first computer, an encryption key is created on that PC. On a second computer, say the notes are already elsewhere and let the first computer allow it. Name this device, choose files/folders, done.
+8. Follow the first-run setup: **Sign in with Google** (or email and password, for an existing account). On the first computer, an encryption key is created on that PC. On a second computer, say the notes are already elsewhere and let the first computer allow it. Name this device, choose files/folders, done.
+
+The ZIP is still published for anyone who cannot run the setup program. Close Notepad++, then copy `NppSync.dll` (and `deps\`, if that folder is in the ZIP) into `plugins\NppSync` under the folder that contains `notepad++.exe`. Create `plugins\NppSync` if it is not there. A normal install uses `C:\Program Files\Notepad++\plugins\NppSync\`.
 
 See the [User Guide](docs/user-guide.md) for details and screenshots.
 

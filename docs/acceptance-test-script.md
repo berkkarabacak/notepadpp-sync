@@ -22,7 +22,8 @@ into the issue you file.
 
 ## 0. Install & first run
 
-- [ ] **0.1** Fresh install: copy `NppSync.dll` to `plugins\NppSync\` on both
+- [ ] **0.1** Fresh install: run `NotepadPlusPlusSync-vX.Y.Z-win64-setup.exe`
+      (or copy `NppSync.dll` to `<Notepad++>\plugins\NppSync\`) on both
       machines, start Notepad++, menu **Plugins → Notepad++ Sync** exists.
 - [ ] **0.2** First-run wizard appears on A: create account
       `acceptance@test.dev`, device name `TestLaptop-A`.

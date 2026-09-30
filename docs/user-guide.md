@@ -5,17 +5,48 @@ No command line required.
 
 ## 1. Install
 
-1. Download the latest release ZIP (`NotepadPlusPlusSync-vX.Y.Z-win64.zip`)
-   from the [Releases page](../../releases).
+Use the setup program. You do not copy a DLL by hand.
+
+1. Download `NotepadPlusPlusSync-vX.Y.Z-win64-setup.exe` from the
+   [Releases page](../../releases).
+2. Double-click it.
+3. If Windows says it protected your PC, choose **More info**, then
+   **Run anyway**. The download is not signed yet.
+4. If Windows asks "Do you want to allow this app to make changes?",
+   choose **Yes**. That only lets the installer copy the plugin into the
+   Notepad++ folder.
+5. Choose **Next**, then **Install**.
+6. If Notepad++ is open, the installer asks before it closes it. Choose
+   **Yes** only when you are ready. Notepad++ then asks you to save any
+   unsaved notes. The installer does not force Notepad++ to quit. Choose
+   **No** to stop, close Notepad++ yourself, and run the installer again.
+7. Open Notepad++. You should see **Plugins → Notepad++ Sync**.
+
+You are not asked for a server address. A new install connects to
+`https://sync.berkkarabacak.com`.
+
+The installer looks for 64-bit Notepad++. A normal install is
+`C:\Program Files\Notepad++`. If Notepad++ was installed for your Windows
+user only, it looks in that install (often
+`%LOCALAPPDATA%\Programs\Notepad++`). It copies `NppSync.dll`, and `deps\`
+when the release includes that folder, into `plugins\NppSync` there.
+
+### If you cannot run the setup program
+
+1. Download `NotepadPlusPlusSync-vX.Y.Z-win64.zip` instead.
 2. Close Notepad++.
-3. Create the folder `%APPDATA%\Notepad++\plugins\NppSync\` (paste that path
-   into Explorer's address bar) and copy `NppSync.dll` from the ZIP into it.
-   - Alternatively, if you have admin rights, use
-     `C:\Program Files\Notepad++\plugins\NppSync\` (system-wide install).
+3. Copy `NppSync.dll` (and `deps\`, if the ZIP has that folder) into
+   `plugins\NppSync` under the folder that contains `notepad++.exe`.
+   Create `plugins\NppSync` if it is not there.
+   - Normal install: `C:\Program Files\Notepad++\plugins\NppSync\`
+   - Installed for you only: the same `plugins\NppSync` folder inside
+     that Notepad++, often
+     `%LOCALAPPDATA%\Programs\Notepad++\plugins\NppSync\`
 4. Open Notepad++. You should see **Plugins → Notepad++ Sync**.
 
-> Windows may mark downloaded DLLs as blocked. If the plugin does not appear,
-> right-click `NppSync.dll` → Properties → check **Unblock** → OK.
+> Windows may mark a DLL from the ZIP as blocked. If the plugin does not
+> appear, right-click `NppSync.dll` → Properties → check **Unblock** → OK.
+> The setup program writes the plugin itself, so that step is only for the ZIP.
 
 ## 2. First-run setup
 
@@ -147,6 +178,13 @@ Notes* option.
 
 ## 9. Uninstall
 
-Delete `NppSync.dll` from the plugins folder. Local data (settings, queue,
-logs) lives in `%APPDATA%\Notepad++Sync\` and can be deleted too. Your
-encrypted files remain on the server until you delete your account.
+Open Windows **Settings → Apps** and uninstall **Notepad++ Sync**, or run
+`Uninstall.exe` in the `plugins\NppSync` folder. If Windows asks for
+permission, choose **Yes**. If Notepad++ is open, the uninstaller asks
+before it closes it. Choose **Yes** only when you are ready for Notepad++
+to ask you to save.
+
+This removes the plugin only. Settings, the queue, logs, and the encryption
+key stay in `%APPDATA%\Notepad++Sync\`. Delete that folder only when you
+mean to erase this computer's copy of the key. Your encrypted files remain
+on the server until you delete your account.

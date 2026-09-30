@@ -31,9 +31,9 @@ are one device. The clicks that move the encryption key are in the
    one already, is [Public demo URL](self-hosting.md#public-demo-url) — not
    a `*.trycloudflare.com` Quick Tunnel.
 
-2. Plugin installed ([user guide](user-guide.md)): `NppSync.dll` in
-   `%APPDATA%\Notepad++\plugins\NppSync\` (or
-   `C:\Program Files\Notepad++\plugins\NppSync\`).
+2. Plugin installed ([user guide](user-guide.md)): double-click the setup
+   program, or copy `NppSync.dll` to `<Notepad++>\plugins\NppSync\`
+   (normally `C:\Program Files\Notepad++\plugins\NppSync\`).
 
 3. Point the plugin at the server **before** the live sign-in. The client
    reads Backend URL at startup. **Save** does not retarget the copy that

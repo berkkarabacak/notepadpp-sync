@@ -35,6 +35,45 @@ The running process keeps the URL it loaded at startup. Then sign in
 (Google, once `NPSYNC_GOOGLE_CLIENT_ID` and
 `NPSYNC_GOOGLE_CLIENT_SECRET` are set, or email/password), and sync.
 
+### Windows installer
+
+The setup program is packaging only. It copies `NppSync.dll` (and `deps\`
+when that folder sits next to the DLL) into `<Notepad++>\plugins\NppSync\`.
+It does not write a server address, and it does not change Google sign-in,
+pairing, or encryption. NSIS 3 (`makensis` on `PATH`) is required.
+
+After a Release build:
+
+```powershell
+powershell -File installer/package.ps1 -Version 1.2.0
+```
+
+That writes `dist\NotepadPlusPlusSync-v1.2.0-win64.zip` and
+`dist\NotepadPlusPlusSync-v1.2.0-win64-setup.exe` (each with a `.sha256`
+file). `-SkipInstaller` builds only the ZIP.
+
+A `v*.*.*` tag runs the same script in the release workflow and uploads
+both files. No new product version is required to wrap a DLL that already
+exists. To build the setup program from the published v1.2.0 plugin:
+
+1. Install [NSIS 3](https://nsis.sourceforge.io/) so `makensis` is on `PATH`.
+2. Download `NotepadPlusPlusSync-v1.2.0-win64.zip` from the v1.2.0 release
+   and extract it. The DLL is at `NppSync\NppSync.dll`.
+3. From a checkout that contains this installer, run:
+
+```powershell
+powershell -File installer/package.ps1 -Version 1.2.0 -BuildDir <extracted>\NppSync -InstallerOnly
+```
+
+`-InstallerOnly` does not rebuild the plugin and does not replace the
+release ZIP. The DLL inside the setup program is the file `-BuildDir`
+points at, so the v1.2.0 ZIP produces a setup program with those same
+plugin bits. The result is
+`dist\NotepadPlusPlusSync-v1.2.0-win64-setup.exe`. Uploading that file
+(and the `.sha256` beside it) onto the existing v1.2.0 GitHub release is
+what publishes it before the next tag. The next `v*.*.*` tag publishes
+the setup program automatically.
+
 ## Server layout
 
 ```
@@ -104,8 +143,8 @@ versioned via the `X-NPSync-Protocol` header. Rules:
    version is lost (including the conflict-copy file).
 7. Inspect the server DB: confirm only ciphertext (`\x` binary blobs) and
    hashes — never plaintext notes.
-8. Tag `vX.Y.Z` → the release workflow builds, tests, packages, and
-   publishes.
+8. Tag `vX.Y.Z` → the release workflow builds, tests, packages the ZIP
+   and the setup program, and publishes both.
 
 ## Code style
 
