@@ -127,9 +127,10 @@ class WsClient {
     void stop();
 
   private:
+    struct Impl;
     void run();
-    // Impl is private. These stay members so MSVC allows them to touch it.
-    // stop() closes the handles before join(); a free function cannot name Impl.
+    // Members, not free functions: MSVC will not let a free function name Impl.
+    // stop() closes the handles before join().
     static bool publishWsHandle(Impl* impl, void* handle);
     static std::vector<void*> takeWsHandles(Impl* impl);
     static void closeWsHandles(std::vector<void*> handles);
@@ -139,7 +140,6 @@ class WsClient {
     EventCallback onEvent_;
     StateCallback onState_;
     std::function<std::string()> tokenProvider_;
-    struct Impl;
     Impl* impl_ = nullptr;
 };
 
