@@ -454,10 +454,8 @@ struct WsClient::Impl
     std::vector<HINTERNET> handles;
 };
 
-namespace
-{
-
-bool publishWsHandle(WsClient::Impl* impl, HINTERNET h) {
+bool WsClient::publishWsHandle(Impl* impl, void* handle) {
+    auto h = static_cast<HINTERNET>(handle);
     std::lock_guard<std::mutex> lk(impl->mu);
     if (!impl->running || !h)
         return false;
@@ -465,23 +463,23 @@ bool publishWsHandle(WsClient::Impl* impl, HINTERNET h) {
     return true;
 }
 
-std::vector<HINTERNET> takeWsHandles(WsClient::Impl* impl) {
+std::vector<void*> WsClient::takeWsHandles(Impl* impl) {
     std::lock_guard<std::mutex> lk(impl->mu);
     std::vector<HINTERNET> mine;
     mine.swap(impl->handles);
-    return mine;
+    return std::vector<void*>(mine.begin(), mine.end());
 }
 
-void closeWsHandles(std::vector<HINTERNET> handles) {
+void WsClient::closeWsHandles(std::vector<void*> handles) {
     // Reverse order: websocket, then request, connect, session.
     for (auto it = handles.rbegin(); it != handles.rend(); ++it) {
         if (*it)
-            WinHttpCloseHandle(*it);
+            WinHttpCloseHandle(static_cast<HINTERNET>(*it));
     }
 }
 
-// Drop one published handle and close it if stop() has not taken it.
-void closePublishedWsHandle(WsClient::Impl* impl, HINTERNET h) {
+void WsClient::closeOneWsHandle(Impl* impl, void* handle) {
+    auto h = static_cast<HINTERNET>(handle);
     bool own = false;
     {
         std::lock_guard<std::mutex> lk(impl->mu);
@@ -494,8 +492,6 @@ void closePublishedWsHandle(WsClient::Impl* impl, HINTERNET h) {
     if (own)
         WinHttpCloseHandle(h);
 }
-
-} // namespace
 
 WsClient::WsClient(std::string baseUrl, EventCallback onEvent, StateCallback onState)
     : baseUrl_(std::move(baseUrl)), onEvent_(std::move(onEvent)), onState_(std::move(onState)) {}
@@ -594,7 +590,7 @@ void WsClient::run() {
                 return;
             }
             // Upgrade consumes the request. Close our copy when we still own it.
-            closePublishedWsHandle(impl_, hReq);
+            closeOneWsHandle(impl_, hReq);
             hReq = nullptr;
             if (!impl_->running)
                 break;

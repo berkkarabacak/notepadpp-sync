@@ -128,6 +128,12 @@ class WsClient {
 
   private:
     void run();
+    // Impl is private. These stay members so MSVC allows them to touch it.
+    // stop() closes the handles before join(); a free function cannot name Impl.
+    static bool publishWsHandle(Impl* impl, void* handle);
+    static std::vector<void*> takeWsHandles(Impl* impl);
+    static void closeWsHandles(std::vector<void*> handles);
+    static void closeOneWsHandle(Impl* impl, void* handle);
 
     std::string baseUrl_;
     EventCallback onEvent_;
