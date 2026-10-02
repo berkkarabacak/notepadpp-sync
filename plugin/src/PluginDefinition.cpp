@@ -31,6 +31,33 @@ std::unique_ptr<Settings> g_settings;
 std::unique_ptr<SyncEngine> g_engine;
 bool g_started = false;
 
+// Message-only window. Sync threads PostMessage a path here; the UI thread
+// does the Notepad++ query and reload. SendMessage from a sync thread deadlocks
+// when WM_CLOSE is already inside SyncEngine::stop waiting for that thread.
+constexpr UINT WM_NPSYNC_RELOAD = WM_APP + 0x51;
+HWND g_msgHwnd = nullptr;
+
+std::wstring currentFilePath();
+
+LRESULT CALLBACK pluginMsgProc(HWND hwnd, UINT msg, WPARAM wp, LPARAM lp) {
+    if (msg == WM_NPSYNC_RELOAD) {
+        std::unique_ptr<std::wstring> path(reinterpret_cast<std::wstring*>(lp));
+        HWND npp = g_nppData._nppHandle;
+        if (path && npp) {
+            std::wstring open = currentFilePath();
+            std::wstring a = *path, b = open;
+            for (auto& c : a)
+                c = (wchar_t)towlower(c);
+            for (auto& c : b)
+                c = (wchar_t)towlower(c);
+            if (a == b && !b.empty())
+                ::SendMessageW(npp, NPPM_RELOADFILE, 0, (LPARAM)open.c_str());
+        }
+        return 0;
+    }
+    return DefWindowProcW(hwnd, msg, wp, lp);
+}
+
 std::wstring appDataDir() {
     wchar_t* roaming = nullptr;
     std::wstring base = L"%APPDATA%";
@@ -140,25 +167,29 @@ void startEngine() {
     Logger::init(dir + L"\\logs", g_settings->debugLogging ? LogLevel::Debug : LogLevel::Info);
     Logger::info("plugin starting");
 
+    if (!g_msgHwnd) {
+        WNDCLASSW wc{};
+        wc.lpfnWndProc = pluginMsgProc;
+        wc.hInstance = g_hModule;
+        wc.lpszClassName = L"NppSyncMsg";
+        RegisterClassW(&wc);
+        g_msgHwnd =
+            CreateWindowW(L"NppSyncMsg", L"", 0, 0, 0, 0, 0, HWND_MESSAGE, nullptr, g_hModule, nullptr);
+    }
+
     g_engine->init(g_store.get(), g_settings.get());
     g_engine->onStatusChanged = [] {
         // Marshalled on demand; status UI reads SyncEngine::status().
     };
     g_engine->onRemoteFileApplied = [](const std::wstring& absPath) {
-        // If the file is open in Notepad++, reload its buffer (guarded:
-        // only when it has no unsaved local edits would be ideal; Notepad++
-        // shows its own "file changed" prompt otherwise).
-        HWND npp = g_nppData._nppHandle;
-        if (!npp)
+        // Posted, not sent. The UI thread joins this worker during WM_CLOSE;
+        // SendMessage would wait for that thread and Notepad++ would never finish
+        // closing. The window proc reloads the buffer if it is the open file.
+        if (!g_msgHwnd)
             return;
-        std::wstring open = currentFilePath();
-        std::wstring a = absPath, b = open;
-        for (auto& c : a)
-            c = (wchar_t)towlower(c);
-        for (auto& c : b)
-            c = (wchar_t)towlower(c);
-        if (a == b && !b.empty())
-            ::SendMessageW(npp, NPPM_RELOADFILE, 0, (LPARAM)open.c_str());
+        auto* path = new std::wstring(absPath);
+        if (!::PostMessageW(g_msgHwnd, WM_NPSYNC_RELOAD, 0, (LPARAM)path))
+            delete path;
     };
     g_engine->start();
 
@@ -190,9 +221,24 @@ void pluginSetInfo(NppData data) {
 }
 
 void pluginCleanup() {
+    // NPPN_SHUTDOWN runs this, then DLL_PROCESS_DETACH runs it again.
+    // The second call finds nothing left. Joining workers while the loader
+    // lock is held deadlocks, so that second call has to stay empty.
+    if (!g_engine && !g_msgHwnd && !g_store && !g_settings)
+        return;
     Logger::info("plugin shutting down");
     if (g_engine)
         g_engine->stop();
+    // Workers have exited, so no new reload can be posted. A path already in
+    // the queue is deleted here; dispatching it would touch Notepad++ while
+    // WM_CLOSE is still unwinding.
+    if (g_msgHwnd) {
+        MSG msg;
+        while (PeekMessageW(&msg, g_msgHwnd, WM_NPSYNC_RELOAD, WM_NPSYNC_RELOAD, PM_REMOVE))
+            delete reinterpret_cast<std::wstring*>(msg.lParam);
+        DestroyWindow(g_msgHwnd);
+        g_msgHwnd = nullptr;
+    }
     g_engine.reset();
     g_store.reset();
     g_settings.reset();
@@ -211,6 +257,9 @@ void pluginBeNotified(SCNotification* notify) {
         startEngine();
         break;
     case NPPN_SHUTDOWN:
+        // Runs on the UI thread inside WM_CLOSE, after Notepad++ has asked
+        // about unsaved notes. It must return. pluginCleanup cancels network
+        // waits instead of joining them cold.
         pluginCleanup();
         break;
     case NPPN_FILESAVED: {

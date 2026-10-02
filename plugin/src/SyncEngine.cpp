@@ -100,7 +100,14 @@ void SyncEngine::start() {
 }
 
 void SyncEngine::stop() {
+    // Notepad++ calls this on the UI thread from WM_CLOSE (NPPN_SHUTDOWN),
+    // after the save prompts. Joining a thread that is blocked in WinHTTP
+    // freezes that close: Windows then reports Notepad++ as not responding,
+    // and choosing Wait does not help. Cancel the socket and HTTP calls
+    // first so the joins finish.
     running_ = false;
+    if (api_)
+        api_->cancelRequests();
     watcher_.stop();
     if (ws_)
         ws_->stop();

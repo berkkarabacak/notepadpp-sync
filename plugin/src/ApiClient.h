@@ -4,8 +4,10 @@
 #pragma once
 
 #include <functional>
+#include <mutex>
 #include <optional>
 #include <string>
+#include <vector>
 
 #include <nlohmann/json.hpp>
 
@@ -73,11 +75,34 @@ class ApiClient {
 
     bool refreshAccessToken();
 
+    // Unblocks any request() stuck in WinHTTP. Close joins those threads on
+    // the Notepad++ UI thread; a 120s receive timeout would freeze WM_CLOSE.
+    void cancelRequests();
+
   private:
     std::string baseUrl_;
     std::string deviceId_;
     std::string accessToken_;
     std::string refreshToken_;
+
+    struct OpenHandles
+    {
+        void* session = nullptr;
+        void* connect = nullptr;
+        void* request = nullptr;
+    };
+    // WinHTTP handles for calls currently inside request(). cancelRequests
+    // closes them from the shutdown thread so the caller returns.
+    std::mutex inflightMu_;
+    std::vector<OpenHandles> inflight_;
+    bool cancel_ = false;
+
+    bool trackSession(void* session);
+    bool trackConnect(void* session, void* connect);
+    bool trackRequest(void* session, void* request);
+    // Closes the handles if this thread still owns them. False means
+    // cancelRequests already closed them and the response must be discarded.
+    bool releaseSession(void* session);
 
     ApiResponse request(const std::string& method, const std::string& path, const nlohmann::json* body,
                         bool authed, bool retryOn401 = true);
@@ -88,6 +113,8 @@ class ApiClient {
 // Minimal WinHTTP-based WebSocket receiver. Runs its own thread; invokes
 // onEvent(json) for each change event and onStateChange(connected) on
 // connect/disconnect. Reconnects with backoff while running.
+// stop() closes the socket before joining. WinHttpWebSocketReceive does not
+// return just because the run flag changed, and it hides server ping frames.
 class WsClient {
   public:
     using EventCallback = std::function<void(const nlohmann::json& ev)>;
