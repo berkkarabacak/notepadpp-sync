@@ -100,7 +100,14 @@ void SyncEngine::start() {
 }
 
 void SyncEngine::stop() {
+    // Notepad++ calls this on the UI thread from WM_CLOSE (NPPN_SHUTDOWN),
+    // after the save prompts. Joining a thread that is blocked in WinHTTP
+    // freezes that close: Windows then reports Notepad++ as not responding,
+    // and choosing Wait does not help. Cancel the socket and HTTP calls
+    // first so the joins finish.
     running_ = false;
+    if (api_)
+        api_->cancelRequests();
     watcher_.stop();
     if (ws_)
         ws_->stop();
@@ -1379,8 +1386,11 @@ void SyncEngine::workerLoop() {
             else if (db_.conflictCount() > 0)
                 setStatus(SyncStatus::Conflict, "Conflict needs attention");
         }
-        for (int i = 0; i < 10 && running_; ++i)
-            Sleep(500); // 5s cadence
+        // syncRequested_ is set by syncNow()/queueUpload; wake early so Sync Now
+        // and a just-saved file are not stuck behind the full 5s sleep.
+        for (int i = 0; i < 10 && running_ && !syncRequested_.load(); ++i)
+            Sleep(500); // 5s cadence unless sync requested
+        syncRequested_ = false;
     }
 }
 

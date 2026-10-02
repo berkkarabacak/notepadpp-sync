@@ -119,8 +119,23 @@ if(NPSYNC_BUILD_TESTS)
     target_compile_features(npsync_dialog_layout_tests PRIVATE cxx_std_17)
     target_compile_definitions(npsync_dialog_layout_tests PRIVATE
         "NPSYNC_DIALOGS_CPP=\"${CMAKE_CURRENT_SOURCE_DIR}/src/Dialogs.cpp\""
-        "NPSYNC_PLUGIN_DEFINITION_CPP=\"${CMAKE_CURRENT_SOURCE_DIR}/src/PluginDefinition.cpp\"")
+        "NPSYNC_PLUGIN_DEFINITION_CPP=\"${CMAKE_CURRENT_SOURCE_DIR}/src/PluginDefinition.cpp\""
+        "NPSYNC_SYNC_ENGINE_CPP=\"${CMAKE_CURRENT_SOURCE_DIR}/src/SyncEngine.cpp\""
+        "NPSYNC_API_CLIENT_CPP=\"${CMAKE_CURRENT_SOURCE_DIR}/src/ApiClient.cpp\"")
     add_test(NAME dialog_layout_tests COMMAND npsync_dialog_layout_tests)
+
+    # Proves close does not sit in an idle WebSocket read or an HTTP call.
+    # Those waits used to run on Notepad++'s UI thread inside WM_CLOSE.
+    add_executable(npsync_shutdown_tests tests/shutdown_test.cpp src/ApiClient.cpp)
+    target_include_directories(npsync_shutdown_tests PRIVATE src)
+    target_link_libraries(npsync_shutdown_tests PRIVATE nlohmann_json::nlohmann_json winhttp ws2_32)
+    if(MSVC)
+        target_compile_options(npsync_shutdown_tests PRIVATE /W4)
+        set_property(TARGET npsync_shutdown_tests PROPERTY MSVC_RUNTIME_LIBRARY
+                     "MultiThreaded$<$<CONFIG:Debug>:Debug>")
+    endif()
+    add_test(NAME shutdown_tests COMMAND npsync_shutdown_tests)
+    set_tests_properties(shutdown_tests PROPERTIES TIMEOUT 30)
 endif()
 
 # ---- install / packaging layout ----

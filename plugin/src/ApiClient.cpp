@@ -9,7 +9,9 @@
 
 #include <algorithm>
 #include <atomic>
+#include <mutex>
 #include <thread>
+#include <vector>
 
 #pragma comment(lib, "winhttp.lib")
 
@@ -115,6 +117,82 @@ void ApiClient::clearTokens() {
     refreshToken_.clear();
 }
 
+bool ApiClient::trackSession(void* session) {
+    std::lock_guard<std::mutex> lk(inflightMu_);
+    if (cancel_ || !session)
+        return false;
+    OpenHandles h;
+    h.session = session;
+    inflight_.push_back(h);
+    return true;
+}
+
+bool ApiClient::trackConnect(void* session, void* connect) {
+    std::lock_guard<std::mutex> lk(inflightMu_);
+    for (auto& h : inflight_) {
+        if (h.session == session) {
+            h.connect = connect;
+            return true;
+        }
+    }
+    return false;
+}
+
+bool ApiClient::trackRequest(void* session, void* request) {
+    std::lock_guard<std::mutex> lk(inflightMu_);
+    for (auto& h : inflight_) {
+        if (h.session == session) {
+            h.request = request;
+            return true;
+        }
+    }
+    return false;
+}
+
+bool ApiClient::releaseSession(void* session) {
+    OpenHandles owned{};
+    {
+        std::lock_guard<std::mutex> lk(inflightMu_);
+        for (auto it = inflight_.begin(); it != inflight_.end(); ++it) {
+            if (it->session == session) {
+                owned = *it;
+                inflight_.erase(it);
+                break;
+            }
+        }
+    }
+    // Close children first. If cancelRequests already took this entry, the
+    // handles are invalid and must not be closed again.
+    if (!owned.session && !owned.connect && !owned.request)
+        return false;
+    if (owned.request)
+        WinHttpCloseHandle(static_cast<HINTERNET>(owned.request));
+    if (owned.connect)
+        WinHttpCloseHandle(static_cast<HINTERNET>(owned.connect));
+    if (owned.session)
+        WinHttpCloseHandle(static_cast<HINTERNET>(owned.session));
+    return true;
+}
+
+void ApiClient::cancelRequests() {
+    std::vector<OpenHandles> doomed;
+    {
+        std::lock_guard<std::mutex> lk(inflightMu_);
+        cancel_ = true;
+        doomed.swap(inflight_);
+    }
+    // Do not hold inflightMu_ here. Closing the handle unblocks request(),
+    // which takes the mutex to drop its copy.
+    for (auto& h : doomed) {
+        if (h.request)
+            WinHttpCloseHandle(static_cast<HINTERNET>(h.request));
+        if (h.connect)
+            WinHttpCloseHandle(static_cast<HINTERNET>(h.connect));
+        if (h.session)
+            WinHttpCloseHandle(static_cast<HINTERNET>(h.session));
+    }
+}
+
 ApiResponse ApiClient::request(const std::string& method, const std::string& path, const json* body,
                                bool authed, bool retryOn401) {
     ApiResponse resp;
@@ -122,6 +200,13 @@ ApiResponse ApiClient::request(const std::string& method, const std::string& pat
     if (!parseUrl(baseUrl_, pu)) {
         resp.transportError = "bad base url";
         return resp;
+    }
+    {
+        std::lock_guard<std::mutex> lk(inflightMu_);
+        if (cancel_) {
+            resp.transportError = "cancelled";
+            return resp;
+        }
     }
 
     HINTERNET hSession = WinHttpOpen(L"NPSync/1.0", WINHTTP_ACCESS_TYPE_AUTOMATIC_PROXY,
@@ -131,12 +216,23 @@ ApiResponse ApiClient::request(const std::string& method, const std::string& pat
         return resp;
     }
     // Bounded timeouts: connect 10s, send 30s, receive 120s (large downloads).
+    // Shutdown does not wait this out; cancelRequests closes the handles.
     WinHttpSetTimeouts(hSession, 10000, 10000, 30000, 120000);
+    if (!trackSession(hSession)) {
+        WinHttpCloseHandle(hSession);
+        resp.transportError = "cancelled";
+        return resp;
+    }
 
     HINTERNET hConnect = WinHttpConnect(hSession, pu.host.c_str(), pu.port, 0);
     if (!hConnect) {
-        WinHttpCloseHandle(hSession);
+        releaseSession(hSession);
         resp.transportError = "WinHttpConnect failed";
+        return resp;
+    }
+    if (!trackConnect(hSession, hConnect)) {
+        // Shutdown already closed the session, which closes this connect.
+        resp.transportError = "cancelled";
         return resp;
     }
 
@@ -146,9 +242,12 @@ ApiResponse ApiClient::request(const std::string& method, const std::string& pat
         WinHttpOpenRequest(hConnect, widen(method).c_str(), wPath.c_str(), nullptr, WINHTTP_NO_REFERER,
                            WINHTTP_DEFAULT_ACCEPT_TYPES, pu.https ? WINHTTP_FLAG_SECURE : 0);
     if (!hReq) {
-        WinHttpCloseHandle(hConnect);
-        WinHttpCloseHandle(hSession);
+        releaseSession(hSession);
         resp.transportError = "WinHttpOpenRequest failed";
+        return resp;
+    }
+    if (!trackRequest(hSession, hReq)) {
+        resp.transportError = "cancelled";
         return resp;
     }
 
@@ -164,9 +263,7 @@ ApiResponse ApiClient::request(const std::string& method, const std::string& pat
         sent = WinHttpReceiveResponse(hReq, nullptr);
     if (!sent) {
         DWORD err = GetLastError();
-        WinHttpCloseHandle(hReq);
-        WinHttpCloseHandle(hConnect);
-        WinHttpCloseHandle(hSession);
+        releaseSession(hSession);
         resp.transportError = "send/receive failed: " + std::to_string(err);
         return resp;
     }
@@ -195,9 +292,13 @@ ApiResponse ApiClient::request(const std::string& method, const std::string& pat
         resp.rawBody.append(chunk, 0, read);
     }
 
-    WinHttpCloseHandle(hReq);
-    WinHttpCloseHandle(hConnect);
-    WinHttpCloseHandle(hSession);
+    if (!releaseSession(hSession)) {
+        // Shutdown closed the handles mid-read. A partial body is not a
+        // successful response; the upload stays queued for the next launch.
+        resp = ApiResponse{};
+        resp.transportError = "cancelled";
+        return resp;
+    }
 
     if (!resp.rawBody.empty()) {
         try {
@@ -346,7 +447,51 @@ struct WsClient::Impl
 {
     std::atomic<bool> running{false};
     std::thread thread;
+    std::mutex mu;
+    // Session, connect, request, and websocket handles for the attempt in
+    // progress. stop() takes this list and closes it so a blocked WinHTTP
+    // call returns. Only one side closes a given handle.
+    std::vector<HINTERNET> handles;
 };
+
+bool WsClient::publishWsHandle(Impl* impl, void* handle) {
+    auto h = static_cast<HINTERNET>(handle);
+    std::lock_guard<std::mutex> lk(impl->mu);
+    if (!impl->running || !h)
+        return false;
+    impl->handles.push_back(h);
+    return true;
+}
+
+std::vector<void*> WsClient::takeWsHandles(Impl* impl) {
+    std::lock_guard<std::mutex> lk(impl->mu);
+    std::vector<HINTERNET> mine;
+    mine.swap(impl->handles);
+    return std::vector<void*>(mine.begin(), mine.end());
+}
+
+void WsClient::closeWsHandles(std::vector<void*> handles) {
+    // Reverse order: websocket, then request, connect, session.
+    for (auto it = handles.rbegin(); it != handles.rend(); ++it) {
+        if (*it)
+            WinHttpCloseHandle(static_cast<HINTERNET>(*it));
+    }
+}
+
+void WsClient::closeOneWsHandle(Impl* impl, void* handle) {
+    auto h = static_cast<HINTERNET>(handle);
+    bool own = false;
+    {
+        std::lock_guard<std::mutex> lk(impl->mu);
+        auto it = std::find(impl->handles.begin(), impl->handles.end(), h);
+        if (it != impl->handles.end()) {
+            impl->handles.erase(it);
+            own = true;
+        }
+    }
+    if (own)
+        WinHttpCloseHandle(h);
+}
 
 WsClient::WsClient(std::string baseUrl, EventCallback onEvent, StateCallback onState)
     : baseUrl_(std::move(baseUrl)), onEvent_(std::move(onEvent)), onState_(std::move(onState)) {}
@@ -367,7 +512,15 @@ void WsClient::start(std::function<std::string()> accessTokenProvider) {
 void WsClient::stop() {
     if (!impl_)
         return;
-    impl_->running = false;
+    std::vector<HINTERNET> handles;
+    {
+        std::lock_guard<std::mutex> lk(impl_->mu);
+        impl_->running = false;
+        handles.swap(impl_->handles);
+    }
+    // Close outside the mutex. WinHttpWebSocketReceive returns only after the
+    // socket handle is closed; the receive thread then takes the mutex.
+    closeWsHandles(std::move(handles));
     if (impl_->thread.joinable())
         impl_->thread.join();
 }
@@ -388,17 +541,34 @@ void WsClient::run() {
 
         HINTERNET hSession = WinHttpOpen(L"NPSync/1.0", WINHTTP_ACCESS_TYPE_AUTOMATIC_PROXY,
                                          WINHTTP_NO_PROXY_NAME, WINHTTP_NO_PROXY_BYPASS, 0);
+        if (hSession)
+            WinHttpSetTimeouts(hSession, 10000, 10000, 15000, 15000);
+        if (hSession && !publishWsHandle(impl_, hSession)) {
+            WinHttpCloseHandle(hSession);
+            return;
+        }
+
         HINTERNET hConnect = hSession ? WinHttpConnect(hSession, pu.host.c_str(), pu.port, 0) : nullptr;
+        if (hConnect && !publishWsHandle(impl_, hConnect)) {
+            // stop() is closing the session, which closes this connect.
+            return;
+        }
+
         HINTERNET hReq = nullptr;
         HINTERNET hWs = nullptr;
         do {
-            if (!hConnect)
+            if (!hConnect || !impl_->running)
                 break;
             hReq = WinHttpOpenRequest(hConnect, L"GET", widen(pu.basePath + "/ws?token=" + token).c_str(),
                                       nullptr, WINHTTP_NO_REFERER, WINHTTP_DEFAULT_ACCEPT_TYPES,
                                       (pu.https ? WINHTTP_FLAG_SECURE : 0));
             if (!hReq)
                 break;
+            if (!publishWsHandle(impl_, hReq)) {
+                // stop() is closing the session, which closes this request.
+                hReq = nullptr;
+                return;
+            }
             if (!WinHttpSetOption(hReq, WINHTTP_OPTION_UPGRADE_TO_WEB_SOCKET, nullptr, 0))
                 break;
             std::wstring headers = L"X-NPSync-Protocol: 1\r\n";
@@ -414,20 +584,29 @@ void WsClient::run() {
             hWs = WinHttpWebSocketCompleteUpgrade(hReq, 0);
             if (!hWs)
                 break;
-            WinHttpCloseHandle(hReq);
+            if (!publishWsHandle(impl_, hWs)) {
+                WinHttpCloseHandle(hWs);
+                hWs = nullptr;
+                return;
+            }
+            // Upgrade consumes the request. Close our copy when we still own it.
+            closeOneWsHandle(impl_, hReq);
             hReq = nullptr;
+            if (!impl_->running)
+                break;
 
             backoffSec = 2;
             if (onState_)
                 onState_(true);
 
-            // Receive loop: text events; server pings are answered by WinHTTP.
+            // Receive loop: text events; server pings are answered by WinHTTP
+            // and do not wake this call. stop() closes hWs to unblock it.
             while (impl_->running) {
                 uint8_t buf[8192];
                 DWORD read = 0;
                 WINHTTP_WEB_SOCKET_BUFFER_TYPE type;
                 DWORD err = WinHttpWebSocketReceive(hWs, buf, sizeof(buf), &read, &type);
-                if (err != 0)
+                if (err != 0 || !impl_->running)
                     break;
                 if (type == WINHTTP_WEB_SOCKET_CLOSE_BUFFER_TYPE)
                     break;
@@ -447,14 +626,10 @@ void WsClient::run() {
                 onState_(false);
         } while (false);
 
-        if (hWs)
-            WinHttpCloseHandle(hWs);
-        if (hReq)
-            WinHttpCloseHandle(hReq);
-        if (hConnect)
-            WinHttpCloseHandle(hConnect);
-        if (hSession)
-            WinHttpCloseHandle(hSession);
+        // Handles stop() already closed are not in the list.
+        closeWsHandles(takeWsHandles(impl_));
+        hWs = nullptr;
+        hReq = nullptr;
 
         if (!impl_->running)
             break;

@@ -616,6 +616,50 @@ static void testWizardDoesNotOpenFolderList(const std::string& file) {
     checkMsg(body.find("finishFirstRunKeys") != std::string::npos, "setup must still run the key step");
 }
 
+// Closing Notepad++ runs NPPN_SHUTDOWN on the UI thread, inside WM_CLOSE.
+// The sync threads must be cancelled before they are joined, and a remote
+// file must not SendMessage that same UI thread.
+static void testCloseDoesNotBlockTheUiThread(const std::string& plugin, const std::string& engine,
+                                             const std::string& api) {
+    auto applied = plugin.find("onRemoteFileApplied");
+    auto started = plugin.find("g_engine->start()", applied);
+    checkMsg(applied != std::string::npos && started != std::string::npos && started > applied,
+             "remote-file callback not found");
+    if (applied != std::string::npos && started != std::string::npos && started > applied) {
+        std::string body = plugin.substr(applied, started - applied);
+        checkMsg(body.find("PostMessageW") != std::string::npos,
+                 "a remote file must be posted to the UI thread");
+        checkMsg(body.find("SendMessageW") == std::string::npos,
+                 "a remote file must not SendMessage the UI thread during close");
+    }
+    checkMsg(plugin.find("PeekMessageW") != std::string::npos,
+             "shutdown must drop a queued reload instead of leaving it behind");
+
+    auto stop = engine.find("void SyncEngine::stop()");
+    auto after = engine.find("std::string SyncEngine::deviceId()", stop);
+    checkMsg(stop != std::string::npos && after != std::string::npos && after > stop, "stop() not found");
+    if (stop != std::string::npos && after != std::string::npos && after > stop) {
+        std::string body = engine.substr(stop, after - stop);
+        auto cancel = body.find("cancelRequests()");
+        auto join = body.find("workerThread_.join");
+        checkMsg(cancel != std::string::npos && join != std::string::npos && cancel < join,
+                 "stop() must cancel HTTP before joining the worker");
+        checkMsg(body.find("ws_->stop()") != std::string::npos, "stop() must stop the websocket");
+    }
+
+    auto wsStop = api.find("void WsClient::stop()");
+    auto wsRun = api.find("void WsClient::run()", wsStop);
+    checkMsg(wsStop != std::string::npos && wsRun != std::string::npos && wsRun > wsStop,
+             "WsClient::stop not found");
+    if (wsStop != std::string::npos && wsRun != std::string::npos && wsRun > wsStop) {
+        std::string body = api.substr(wsStop, wsRun - wsStop);
+        auto close = body.find("closeWsHandles");
+        auto join = body.find("join()");
+        checkMsg(close != std::string::npos && join != std::string::npos && close < join,
+                 "websocket stop must close the socket before join");
+    }
+}
+
 int main() {
     using namespace npsync::layout;
     CHECK(frameFits(kPrompt));
@@ -639,8 +683,12 @@ int main() {
 
     const std::string dialogs = readFile(NPSYNC_DIALOGS_CPP);
     const std::string menu = readFile(NPSYNC_PLUGIN_DEFINITION_CPP);
+    const std::string engine = readFile(NPSYNC_SYNC_ENGINE_CPP);
+    const std::string api = readFile(NPSYNC_API_CLIENT_CPP);
     checkMsg(!dialogs.empty(), std::string("could not read ") + NPSYNC_DIALOGS_CPP);
     checkMsg(!menu.empty(), std::string("could not read ") + NPSYNC_PLUGIN_DEFINITION_CPP);
+    checkMsg(!engine.empty(), std::string("could not read ") + NPSYNC_SYNC_ENGINE_CPP);
+    checkMsg(!api.empty(), std::string("could not read ") + NPSYNC_API_CLIENT_CPP);
     if (!dialogs.empty()) {
         scanWideStrings(dialogs, "Dialogs.cpp");
         scanControls(dialogs);
@@ -656,6 +704,8 @@ int main() {
         scanWideStrings(menu, "PluginDefinition.cpp");
         checkMsg(menu.find("Synced Files/Folders") != std::string::npos,
                  "the folder list must stay on the plugin menu");
+        if (!engine.empty() && !api.empty())
+            testCloseDoesNotBlockTheUiThread(menu, engine, api);
     }
 
     std::printf("%d checks, %d failures\n", g_checks, g_failures);
